@@ -5,30 +5,29 @@ import pandas as pd
 from collections.abc import Iterable
 
 from thresher import algorithm
+from thresher.oracle import run_oracle, run_computations
 from thresher.exceptions import NOT_IMPLEMENTED_ERROR
 
 
 class ThresherBase(object):
 
     def _run_oracle(self, data_traits: dict):
-        if self.options['algorithm'] != algorithm.DEFAULT:
-            if self.verbose:
+        if self.options['algorithm'] == algorithm.DEFAULT:
+            if self.options['verbose']:
                 print("Running heuristics on choosing a proper algorithm")
+            chosen_algorithm = run_oracle(data_traits)
 
-            data_volume = data_traits['data_length']
-
-            if data_volume <= algorithm.available_algorithms['ls'].data_vol_thresh:
-                chosen_algorithm = algorithm.available_algorithms['ls']
-            elif data_volume <= algorithm.available_algorithms['sgd'].data_vol_thresh:
-                chosen_algorithm = algorithm.available_algorithms['sgd']
-            else:
-                chosen_algorithm = algorithm.available_algorithms['gen']
         else:
             chosen_algorithm = self.options['algorithm']
 
-        if self.verbose:
+        if self.options['verbose']:
             print(f"Chosen algorithm: {chosen_algorithm.full_name}")
+
         return chosen_algorithm
+
+    def _compute(self, chosen_algorithm, scores, actual_classes):
+        return run_computations(chosen_algorithm, scores, actual_classes,
+                                self.options['verbose'], self.options['progress_bar'])
 
 
 class Thresher(ThresherBase):
@@ -71,9 +70,12 @@ class Thresher(ThresherBase):
             return {'name': current_algorithm.id, 'object': current_algorithm}
 
     @staticmethod
-    def get_supported_algorithms():
+    def get_supported_algorithms(as_dict=False):
         """Get list of supported languages."""
-        return algorithm.available_algorithms.keys()
+        if as_dict:
+            return {k: v.full_name for k, v in algorithm.available_algorithms.items()}
+        else:
+            return list(algorithm.available_algorithms.keys())
 
     def optimize_threshold(self, scores, actual_classes):
         if not isinstance(scores, Iterable):
@@ -85,4 +87,6 @@ class Thresher(ThresherBase):
 
         data_traits = {'data_length': len(scores)}
 
-        choosen_algorithm = self._run_oracle(data_traits)
+        chosen_algorithm = self._run_oracle(data_traits)
+
+        return self._compute(chosen_algorithm, scores, actual_classes)
