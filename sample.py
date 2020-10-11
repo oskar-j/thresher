@@ -19,4 +19,12 @@ case_medium_labels = list(medium_data['actual'].values)
 
 print(f'Optimization result: {t.optimize_threshold(case_medium_scores, case_medium_labels)}')
 
+t = thresher.Thresher(algorithm='gen', progress_bar=True, verbose=True)
+
+medium_data = get_sample_data()
+case_medium_scores = list(medium_data['pred'].values)
+case_medium_labels = list(medium_data['actual'].values)
+
+print(f'Alternative optimization result: {t.optimize_threshold(case_medium_scores, case_medium_labels)}')
+
 print('Done')
