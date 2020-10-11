@@ -6,6 +6,8 @@
 
 ### Requirements
 
+Tested with Python `3.7+`, on a standard Unix environment
+
 ### Installation
 
 Installation from source:
@@ -37,3 +39,7 @@ print(f'Optimization result: {t.optimize_threshold(cases, actual_labels)}')
 ```
 
 ## Future work
+
+* adding more algorithms
+* publishing on conda
+* more heavy test loads
