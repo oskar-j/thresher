@@ -1,4 +1,4 @@
-DISTNAME = 'thresher'
+DISTNAME = 'thresher-py'
 DESCRIPTION = 'Find threshold for fine-tuning output from predict_proba'
 AUTHOR = 'Oskar Jarczyk'
 AUTHOR_EMAIL = 'oskar.jarczyk@gmail.com'

@@ -22,7 +22,7 @@ pip install git+https://github.com/oskar-j/thresher.git
 Stable release using the `pip` tool:
 
 ```
-pip install thresher
+pip install thresher-py
 ```
 
 ## Sample usage
