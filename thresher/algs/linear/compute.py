@@ -28,6 +28,7 @@ def run(scores, actual_classes, verbose, progress_bar) -> float:
         if accuracy > best_accuracy:
             best_threshold, best_accuracy = middle, accuracy
 
-    print_progress_bar(batch_size, batch_size)
+    if progress_bar:
+        print_progress_bar(batch_size, batch_size)
 
     return best_threshold

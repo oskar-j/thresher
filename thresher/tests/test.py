@@ -10,6 +10,7 @@ class ThresherMediumTest(unittest.TestCase):
     def setUp(self):
         # Preparing data for unit test
         self.t = thresher.Thresher(verbose=False, progress_bar=False)
+        self.alt_t = thresher.Thresher(algorithm='linear', verbose=False, progress_bar=False)
         medium_data = get_sample_data(path='./')
         self.scores = list(medium_data['pred'].values)
         self.actual_classes = list(medium_data['actual'].values)
@@ -17,6 +18,12 @@ class ThresherMediumTest(unittest.TestCase):
     def test_data_case(self):
         compute_result = self.t.optimize_threshold(self.scores, self.actual_classes)
         print(f'[ThresherMediumTest] Result found: {compute_result}')
+        self.assertTrue(0.4 <= compute_result < 0.6,
+                        msg="Checking proper result for the ThresherMediumTest")
+
+    def test_data_case_alt(self):
+        compute_result = self.alt_t.optimize_threshold(self.scores, self.actual_classes)
+        print(f'[ThresherMediumTest][Alg:linear] Result found: {compute_result}')
         self.assertTrue(0.4 <= compute_result < 0.6,
                         msg="Checking proper result for the ThresherMediumTest")
 

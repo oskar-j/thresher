@@ -33,23 +33,15 @@ class ThresherBase(object):
 class Thresher(ThresherBase):
 
     def __init__(self, **kwargs):
-        """Creates a new FastCast object, an interface to Wikipedia categories.
+        """Creates a new Thresher object, an interface to the Thesher evaluator.
 
-        The __init__ method creates the FastCat object, which acts as the main and only
-        interface in communicating with the Redis server (where the Wikipedia categories are
-        first loaded (stored) and then retrieved on demand). Default settings mean that you're connecting
-        to a Redis instance on the localhost and 6379 port, and your current language of categories is English.
-        It's possible to pass your own Redis client object into the 'db' arg, or,
-        alternatively, custom args to the Redis client __init__ method.
+        The __init__ method creates the Thresher object.
 
         Note:
             No need to pass any extra arguments if you don't understand what you're doing
 
         Args:
-            db (:obj:`Redis`, optional): Custom Redis client.
-            language (:obj:`str`, optional): Choose the default language.
-            kwargs (:obj:`dict`, optional): Any arguments, which you wish to pass to the Redis client.
-
+            kwargs (:obj:`dict`, optional): Any hidden arguments, which you wish to pass.
         """
 
         super(ThresherBase, self).__init__()
