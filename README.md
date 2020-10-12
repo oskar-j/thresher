@@ -2,6 +2,24 @@
 
 ## Project description
 
+Method interesting for the user is `optimize_threshold(scores, actual_classes)`, which is available 
+from the `Thresher` class. This method, for given ​scores and ​actual classes, 
+returns a ​threshold that yields ​the highest fraction 
+of correctly classified samples.
+
+```
+optimize_threshold parameters:
+  scores​:list
+    The list of scores.
+  actual_classes​:list
+    The list of ground truth (correct) classes. 
+    Classes are represented as -1 and 1.
+returns:
+  threshold:​float
+    The threshold value that yields ​the highest fraction of correctly classified 
+    samples​. If multiple thresholds give the optimal fraction, return any threshold.
+```
+
 ## How to setup?
 
 The process is rather straightforward, you just need to just whether to install 
@@ -46,3 +64,5 @@ print(f'Optimization result: {t.optimize_threshold(cases, actual_labels)}')
 * adding more algorithms
 * publishing on conda
 * more heavy test loads
+* python docs
+* CI pipeline for automated tests
