@@ -1,11 +1,15 @@
 import random
 import numpy as np
+
+from thresher.algs.common.meta_optimizer import calculate_range_mean
 from thresher.algs.common.stochastic import stochastic_process
 
 
 def run(scores, actual_classes, verbose, progress_bar) -> float:
     # Defining the population size
     population_size = 30
+    population_initial_range = (calculate_range_mean(scores, actual_classes, -1),
+                                calculate_range_mean(scores, actual_classes, 1))
 
     number_of_generations = 20
     number_of_iterations = 10
@@ -18,7 +22,7 @@ def run(scores, actual_classes, verbose, progress_bar) -> float:
     # Build the population
     for i in range(population_size):
         population.append({'id': f'agent_{i}',
-                           'trait': random.random(),
+                           'trait': random.uniform(population_initial_range[0], population_initial_range[1]),
                            'trait_eff': list()})
 
     for generation_no in range(number_of_generations):

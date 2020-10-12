@@ -18,22 +18,24 @@ class ThresherMediumTest(unittest.TestCase):
         self.scores = list(medium_data['pred'].values)
         self.actual_classes = list(medium_data['actual'].values)
 
+        self.left_allowed, self.right_allowed = 0.40, 0.65
+
     def test_data_case(self):
         compute_result = self.t.optimize_threshold(self.scores, self.actual_classes)
         print(f'[ThresherMediumTest] Result found: {compute_result}')
-        self.assertTrue(0.4 <= compute_result < 0.6,
+        self.assertTrue(self.left_allowed <= compute_result < self.right_allowed,
                         msg="Checking proper result for the ThresherMediumTest")
 
     def test_data_case_alt(self):
         compute_result = self.alt_t.optimize_threshold(self.scores, self.actual_classes)
         print(f'[ThresherMediumTest][Alg:linear] Result found: {compute_result}')
-        self.assertTrue(0.4 <= compute_result < 0.6,
+        self.assertTrue(self.left_allowed <= compute_result < self.right_allowed,
                         msg="Checking proper result for the ThresherMediumTest")
 
     def test_data_case_alt2(self):
         compute_result = self.alt_t2.optimize_threshold(self.scores, self.actual_classes)
         print(f'[ThresherMediumTest][Alg:sim] Result found: {compute_result}')
-        self.assertTrue(0.4 <= compute_result < 0.6,
+        self.assertTrue(self.left_allowed <= compute_result < self.right_allowed,
                         msg="Checking proper result for the ThresherMediumTest")
 
     def test_oracle(self):
