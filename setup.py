@@ -6,8 +6,8 @@ MAINTAINER = 'Oskar Jarczyk'
 MAINTAINER_EMAIL = 'oskar.jarczyk@gmail.com'
 LICENSE = 'MIT'
 URL = 'https://github.com/oskar-j/thresher'
-VERSION = '0.1.0'
-DOWNLOAD_URL = 'https://github.com/oskar-j/thresher/archive/v_01_0.tar.gz'
+VERSION = '0.1.1'
+DOWNLOAD_URL = 'https://github.com/oskar-j/thresher/archive/v_01_1.tar.gz'
 KEYWORDS = ['Hyper-parameters', 'Finetuning', 'ML', 'Optimization', 'AutoML']
 CLASSIFIERS = ['Development Status :: 3 - Alpha',
                'Intended Audience :: Science/Research',
