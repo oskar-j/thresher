@@ -1,5 +1,8 @@
 # Thresher - THRESHold EvaluatoR
 
+A python tool for finding a threshold which maximizes accuracy 
+of `predict_proba` like-outputs in regard to the ground truth.
+
 ## Project description
 
 Method interesting for the user is `optimize_threshold(scores, actual_classes)`, which is available 
