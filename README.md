@@ -34,9 +34,23 @@ We implemented a meta-optimizer - an 'oracle' mechanism, which chooses a proper 
 
 ### Evolutionary algorithm
 
+This is a simulation approach which uses an evolutionary algorithm. It works by simulating multiple generations of a "population" of candidate solutions. During every iteration of a single generation, algorithm stochasticly evaluates the candidate solution.
+
+List of parameters to customize:
+* `population_size` (default: 30)
+* `number_of_generations` (default: 20)
+* `number_of_iterations` (default: 10)
+* `sus_factor` (default: 2)
+* `stoch_ratio` (default: 0.02)
+* `optimized_start` (default: True)
+
 ### Grid search
 
+Added in version `0.1.2`.
+
 ### Stochastic Grid search
+
+Added in version `0.1.2`.
 
 ## How to setup?
 
