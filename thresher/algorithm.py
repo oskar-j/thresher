@@ -20,4 +20,5 @@ def retrieve_by_alias(name: str):
     try:
         return available_algorithms[name]
     except KeyError:
+        # try to match by the 'alternate name'
         return next(_ for _ in available_algorithms.values() if name in _.synonyms)

@@ -49,7 +49,8 @@ class Thresher(ThresherBase):
         self.options = {
             'algorithm': 'auto',
             'verbose': False,
-            'progress_bar': False
+            'progress_bar': False,
+            'algorithm_params': {}
         }
 
         self.options.update(kwargs)
@@ -60,6 +61,16 @@ class Thresher(ThresherBase):
         """Get current language."""
         with self.options['algorithm'] as current_algorithm:
             return {'name': current_algorithm.id, 'object': current_algorithm}
+
+    def get_current_options(self):
+        return self.options
+
+    def set_algorithm(self, algorithm_name):
+        try:
+            self.options['algorithm'] = algorithm.retrieve_by_alias(algorithm_name)
+        except StopIteration:
+            print('Unknown algorithm, please use a name available in get_supported_algorithms()')
+        return self
 
     @staticmethod
     def get_supported_algorithms(as_dict=False):
