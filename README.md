@@ -30,11 +30,15 @@ We implemented a meta-optimizer - an 'oracle' mechanism, which chooses a proper 
 
 ### Linear search
 
+This is the most basic, iterative approach. Recommended for smaller datasets. For every _threshold_ present in the input, we evaluate it by calculating the accuracy of such _split_.
+
 ### 2-dim Stochastic Gradient Descent
+
+tbd
 
 ### Evolutionary algorithm
 
-This is a simulation approach which uses an evolutionary algorithm. It works by simulating multiple generations of a "population" of candidate solutions. During every iteration of a single generation, algorithm stochasticly evaluates the candidate solution.
+This is a simulation approach which uses an evolutionary algorithm. It works by simulating multiple generations of a "population" of candidate solutions. During every iteration of a single generation, algorithm stochasticly evaluates the candidate solution. After the end of a single generation, we remove the from the population least fit agents (solutions), and the _crossover_ between the left solitions to produce new "offspring" candidate solutions. Moreover, they may mutate to provide additional random chance. 
 
 List of parameters to customize:
 * `population_size` (default: 30)
@@ -43,6 +47,8 @@ List of parameters to customize:
 * `sus_factor` (default: 2)
 * `stoch_ratio` (default: 0.02)
 * `optimized_start` (default: True)
+* `mutation_chance` (default: 0.05)
+* `mutation_factor` (default: 0.10)
 
 ### Grid search
 
