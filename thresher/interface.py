@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from thresher import algorithm
 from thresher.oracle import run_oracle, run_computations
 from thresher.exceptions import NOT_IMPLEMENTED_ERROR
+from thresher.utils import map_labels
 
 
 class ThresherBase(object):
@@ -89,6 +90,10 @@ class Thresher(ThresherBase):
             raise AttributeError(NOT_IMPLEMENTED_ERROR)
 
         scores = list(scores)
+        if ('labels' in self.options) and (isinstance(self.options['labels'], Iterable)):
+            actual_classes = list(map_labels(actual_classes, self.options['labels']))
+        else:
+            actual_classes = list(actual_classes)
 
         data_traits = {'data_length': len(scores)}
 

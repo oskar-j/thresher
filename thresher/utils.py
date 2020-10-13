@@ -1,6 +1,21 @@
 from itertools import tee
 
 
+NEGATIVE_LABEL = -1
+POSITIVE_LABEL = 1
+
+
+def map_labels(labels, mapping):
+    assert type(mapping) in [list, tuple]
+    for label in labels:
+        if label == mapping[0]:
+            yield NEGATIVE_LABEL
+        elif label == mapping[1]:
+            yield POSITIVE_LABEL
+        else:
+            raise TypeError('Value not found in the mapping - map_labels() cannot map label classes.')
+
+
 def get_or_default(options, key, default):
     if key in options:
         return options[key]

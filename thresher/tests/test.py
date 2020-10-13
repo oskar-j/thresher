@@ -47,11 +47,19 @@ class ThresherVerySmallTest(unittest.TestCase):
     def setUp(self):
         # Preparing data for unit test
         self.t = thresher.Thresher(progress_bar=False)
+        self.scores = [0.1, 0.3, 0.4, 0.7]
+
+    def test_data_normalization(self):
+        self.t = thresher.Thresher(labels=(0, 1))
+        actual_classes = [0, 0, 1, 1]
+        compute_result = self.t.optimize_threshold(self.scores, actual_classes)
+        print(f'[ThresherVerySmallTest] Result found: {compute_result}')
+        self.assertTrue(0.3 <= compute_result < 0.4,
+                        msg="Checking proper result for the ThresherVerySmallTest")
 
     def test_data_case(self):
-        scores = [0.1, 0.3, 0.4, 0.7]
         actual_classes = [-1, -1, 1, 1]
-        compute_result = self.t.optimize_threshold(scores, actual_classes)
+        compute_result = self.t.optimize_threshold(self.scores, actual_classes)
         print(f'[ThresherVerySmallTest] Result found: {compute_result}')
         self.assertTrue(0.3 <= compute_result < 0.4,
                         msg="Checking proper result for the ThresherVerySmallTest")
