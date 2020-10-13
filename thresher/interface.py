@@ -27,7 +27,9 @@ class ThresherBase(object):
 
     def _compute(self, chosen_algorithm, scores, actual_classes):
         return run_computations(chosen_algorithm, scores, actual_classes,
-                                self.options['verbose'], self.options['progress_bar'])
+                                self.options['verbose'],
+                                self.options['progress_bar'],
+                                self.options['algorithm_params'])
 
 
 class Thresher(ThresherBase):

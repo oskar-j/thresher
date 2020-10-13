@@ -1,6 +1,13 @@
 from itertools import tee
 
 
+def get_or_default(options, key, default):
+    if key in options:
+        return options[key]
+    else:
+        return default
+
+
 def pairwise(iterable):
     a, b = tee(iterable)
     next(b, None)

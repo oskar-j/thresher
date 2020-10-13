@@ -3,19 +3,37 @@ import numpy as np
 
 from thresher.algs.common.meta_optimizer import calculate_range_mean
 from thresher.algs.common.stochastic import stochastic_process
+from thresher.utils import get_or_default, print_progress_bar
+
+population_size_default = 30
+number_of_generations_default = 20
+number_of_iterations_default = 10
+sus_factor_default = 2
+stoch_ratio_default = 0.02
+mutation_chance_default = 0.05
+mutation_factor_default = 0.10
 
 
-def run(scores, actual_classes, verbose, progress_bar) -> float:
+def run(scores, actual_classes, verbose, progress_bar, alg_options) -> float:
+    if verbose and progress_bar:
+        print('Warning! Enabling verbosity automatically disables a progress bar.')
+        progress_bar = False
+
     # Defining the population size
-    population_size = 30
+    population_size = get_or_default(alg_options, 'population_size', population_size_default)
     population_initial_range = (calculate_range_mean(scores, actual_classes, -1),
                                 calculate_range_mean(scores, actual_classes, 1))
 
-    number_of_generations = 20
-    number_of_iterations = 10
+    number_of_generations = get_or_default(alg_options, 'number_of_generations', number_of_generations_default)
+    number_of_iterations = get_or_default(alg_options, 'number_of_iterations', number_of_iterations_default)
 
-    sus_factor = population_size - 2  # how many agents should die child-less after a generation
-    stoch_ratio = 0.02  # random ratio - the lower, the faster sim
+    sus_factor = population_size - get_or_default(alg_options, 'sus_factor', sus_factor_default)
+    # how many agents should die child-less after a generation
+
+    stoch_ratio = get_or_default(alg_options, 'stoch_ratio', stoch_ratio_default)
+    # random ratio - the lower, the faster sim
+
+    mutation_factor = get_or_default(alg_options, 'mutation_factor', mutation_factor_default)
 
     population = []
 
@@ -28,6 +46,9 @@ def run(scores, actual_classes, verbose, progress_bar) -> float:
     for generation_no in range(number_of_generations):
         if verbose:
             print(f'Running generation no {generation_no}')
+
+        if progress_bar:
+            print_progress_bar(generation_no, number_of_generations)
 
         for iteration_no in range(number_of_iterations):
             for agent in population:
@@ -56,10 +77,13 @@ def run(scores, actual_classes, verbose, progress_bar) -> float:
                                'trait_eff': list()})
 
         # mutate
-        if random.random() < 0.05:
-            population[int(len(population) * random.random())]['trait'] += random.randrange(1, 10) / 100.0
+        if random.random() < get_or_default(alg_options, 'mutation_chance', mutation_chance_default):
+            population[int(len(population) * random.random())]['trait'] += mutation_factor * random.random()
 
         if verbose:
             print(f'Population after gen: {generation_no} - {[_["trait"] for _ in population]}')
+
+    if progress_bar:
+        print_progress_bar(number_of_generations, number_of_generations)
 
     return float(np.mean([_["trait"] for _ in population]))

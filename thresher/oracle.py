@@ -23,7 +23,8 @@ def run_oracle(data_traits: dict):
     return chosen_algorithm
 
 
-def run_computations(chosen_algorithm: algorithm.Algorithm, scores, actual_classes, verbose, progress_bar) -> float:
+def run_computations(chosen_algorithm: algorithm.Algorithm, scores, actual_classes,
+                     verbose, progress_bar, alg_options) -> float:
     assert set(actual_classes) == {-1, 1}
 
     if verbose:
@@ -34,6 +35,6 @@ def run_computations(chosen_algorithm: algorithm.Algorithm, scores, actual_class
     elif chosen_algorithm == STOCHASTIC_GRADIENT_DESCENT:
         return sgd_compute.run(scores, actual_classes, verbose, progress_bar)
     elif chosen_algorithm == GENETIC_ALGORITHM:
-        return gen_compute.run(scores, actual_classes, verbose, progress_bar)
+        return gen_compute.run(scores, actual_classes, verbose, progress_bar, alg_options)
     else:
         raise NotImplementedError(UNKNOWN_ALGORITHM)
