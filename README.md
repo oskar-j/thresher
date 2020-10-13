@@ -85,6 +85,23 @@ pip install thresher-py
 
 It's possible to provide additional parameters in the `Thresher` constructor. 
 
+```python
+Thresher(algorithm='auto',
+         verbose=False, 
+         progress_bar=False,
+         labels=(0,1))
+```
+
+Here is a description of what does every particular parameter do:
+
+* **algorithm** (default value: `'auto'`) - allows to manually choose the algorithm from the list of available algorithms.
+Same effect can be achieved with running the method called `set_algorithm(algorithm_name)` on the `Thresher` instance. 
+The default value is 'auto', which means that the tool uses an oracle mechanism to manually choose a proper algorithm.
+* **verbose** (default value: `False`) - enables verbosity
+* **progress_bar** (default value: `False`) - shows a progress bar in the terminal (if supported by the algorithm)
+* **labels** - necessary if your labels are different from `(-1, 1)` - first item from the tuple/list is a negative label, 
+and the second item is a positive label
+
 ### Control parameters for the algorithms
 
 tbd
