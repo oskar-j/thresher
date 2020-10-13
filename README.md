@@ -1,14 +1,13 @@
-# Thresher - THRESHold EvaluatoR
+# Thresher - THRESHold EvaluatoR for Python
 
-A python tool for finding a threshold which maximizes accuracy 
-of `predict_proba` like-outputs in regard to the ground truth.
+A bare pandas implementation of a tool for finding the threshold which maximizes accuracy 
+of `predict_proba` like-outputs (from e.g. `scikit-learn`), in regard to the provided ground truth (labels).
 
 ## Project description
 
 Method interesting for the user is `optimize_threshold(scores, actual_classes)`, which is available 
-from the `Thresher` class. This method, for given ​scores and ​actual classes, 
-returns a ​threshold that yields ​the highest fraction 
-of correctly classified samples.
+from the `Thresher` class. This method, for given _scores_ and _actual classes_, 
+returns a threshold that yields the _**highest fraction** of correctly classified_ samples.
 
 ```
 optimize_threshold parameters:
@@ -22,6 +21,20 @@ returns:
     The threshold value that yields ​the highest fraction of correctly classified 
     samples​. If multiple thresholds give the optimal fraction, return any threshold.
 ```
+
+### An oracle mechanism
+
+### Implemented algorithms
+
+### Linear search
+
+### 2-dim Stochastic Gradient Descent
+
+### Evolutionary algorithm
+
+### Grid search
+
+### Stochastic Grid search
 
 ## How to setup?
 
