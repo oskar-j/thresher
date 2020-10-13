@@ -42,6 +42,37 @@ class ThresherMediumTest(unittest.TestCase):
         self.assertTrue(run_oracle({'data_length': len(self.scores)}) == algorithm.available_algorithms['sgd'])
 
 
+class ThresherSmallTest(unittest.TestCase):
+
+    def setUp(self):
+        # Preparing data for unit test
+        self.t = thresher.Thresher(progress_bar=False)
+        self.scores = [0.1, 0.15, 0.2, 0.22, 0.27, 0.29, 0.3, 0.4, 0.7]
+
+    def test_data_normalization(self):
+        self.t = thresher.Thresher(labels=(0, 1))
+        actual_classes = [0, 0, 0, 0, 0, 0, 0, 1, 1]
+        compute_result = self.t.optimize_threshold(self.scores, actual_classes)
+        print(f'[ThresherVerySmallTest] Result found: {compute_result}')
+        self.assertTrue(0.3 <= compute_result < 0.4,
+                        msg="Checking proper result for the ThresherVerySmallTest")
+
+    def test_data_case(self):
+        actual_classes = [-1, -1, -1, -1, -1, -1, -1, 1, 1]
+        compute_result = self.t.optimize_threshold(self.scores, actual_classes)
+        print(f'[ThresherVerySmallTest] Result found: {compute_result}')
+        self.assertTrue(0.3 <= compute_result < 0.4,
+                        msg="Checking proper result for the ThresherVerySmallTest")
+
+    def test_data_case_parallel(self):
+        self.t = thresher.Thresher(algorithm_params={'n_jobs': 3})
+        actual_classes = [-1, -1, -1, -1, -1, -1, -1, 1, 1]
+        compute_result = self.t.optimize_threshold(self.scores, actual_classes)
+        print(f'[ThresherVerySmallTest] Result found: {compute_result}')
+        self.assertTrue(0.3 <= compute_result < 0.4,
+                        msg="Checking proper result for the ThresherVerySmallTest")
+
+
 class ThresherVerySmallTest(unittest.TestCase):
 
     def setUp(self):

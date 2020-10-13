@@ -30,6 +30,7 @@ class ThresherBase(object):
         return run_computations(chosen_algorithm, scores, actual_classes,
                                 self.options['verbose'],
                                 self.options['progress_bar'],
+                                self.options['allow_parallel'],
                                 self.options['algorithm_params'])
 
 
@@ -51,6 +52,7 @@ class Thresher(ThresherBase):
 
         self.options = {
             'algorithm': 'auto',
+            'allow_parallel': True,
             'verbose': False,
             'progress_bar': False,
             'algorithm_params': {}

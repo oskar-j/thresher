@@ -32,6 +32,10 @@ We implemented a meta-optimizer - an 'oracle' mechanism, which chooses a proper 
 
 This is the most basic, iterative approach. Recommended for smaller datasets. For every _threshold_ present in the input (in the _scores_ list), we evaluate it by calculating the exact accuracy of _split_ produced by such threshold. Then, return the threshold which produce the most accurate split. 
 
+List of parameters to customize:
+* `n_jobs` (default: 1) - set to `-1` for using all available processors except one; any value of `2` or more 
+enables multiprocessing, while the default value of `1` disables multiprocessing
+
 ### 2-dim Stochastic Gradient Descent
 
 tbd
@@ -41,11 +45,11 @@ tbd
 This is a simulation approach which uses an evolutionary algorithm. It works by simulating multiple generations of a "population" of candidate solutions. During every iteration of a single generation, algorithm stochasticly evaluates the candidate solution. After the end of a single generation, we remove the from the population least fit agents (solutions), and do the _crossover_ between the left solitions to produce new "offspring" candidate solutions. Moreover, they may mutate to provide additional random chance. 
 
 List of parameters to customize:
-* `population_size` (default: 30)
-* `number_of_generations` (default: 20)
-* `number_of_iterations` (default: 10)
-* `sus_factor` (default: 2)
-* `stoch_ratio` (default: 0.02)
+* `population_size` (default: 30) - number of agents in the simulation
+* `number_of_generations` (default: 20) - number of generations
+* `number_of_iterations` (default: 10) - number of iterations per a generation
+* `sus_factor` (default: 2) - how many least-fit agents should be childless at the end of generation
+* `stoch_ratio` (default: 0.02) - percentage of data to evaluate fit of a single agent per iteration
 * `optimized_start` (default: True)
 * `mutation_chance` (default: 0.05)
 * `mutation_factor` (default: 0.10)
@@ -87,6 +91,7 @@ It's possible to provide additional parameters in the `Thresher` constructor.
 
 ```python
 Thresher(algorithm='auto',
+         allow_parallel=True,
          verbose=False, 
          progress_bar=False,
          labels=(0,1))
@@ -97,6 +102,7 @@ Here is a description of what does every particular parameter do:
 * **algorithm** (default value: `'auto'`) - allows to manually choose the algorithm from the list of available algorithms.
 Same effect can be achieved with running the method called `set_algorithm(algorithm_name)` on the `Thresher` instance. 
 The default value is 'auto', which means that the tool uses an oracle mechanism to manually choose a proper algorithm.
+* **allow_parallel** (default value: `True`) - enables/disabled multiprocessing for algorithms
 * **verbose** (default value: `False`) - enables verbosity
 * **progress_bar** (default value: `False`) - shows a progress bar in the terminal (if supported by the algorithm)
 * **labels** - necessary if your labels are different from `(-1, 1)` - first item from the tuple/list is a negative label, 
@@ -104,7 +110,15 @@ and the second item is a positive label
 
 ### Control parameters for the algorithms
 
-tbd
+Some of the above-mentioned algorithms allow to change their parameters. 
+They should be provided in a dictionary, inside the `algorithm_params` parameter. 
+If no such customs parameters are provided, default values apply.
+
+Example:
+
+```python
+t = thresher.Thresher(algorithm_params={'n_jobs': 3})
+```
 
 ## Sample usage
 

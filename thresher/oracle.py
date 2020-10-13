@@ -24,14 +24,17 @@ def run_oracle(data_traits: dict):
 
 
 def run_computations(chosen_algorithm: algorithm.Algorithm, scores, actual_classes,
-                     verbose, progress_bar, alg_options) -> float:
+                     verbose, progress_bar, allow_parallel, alg_options) -> float:
     assert set(actual_classes) == {-1, 1}
 
     if verbose:
         print(f'Executing the {chosen_algorithm.full_name} algorithm... please wait for the result.')
 
     if chosen_algorithm == LINEAR_ALGORITHM:
-        return linear_compute.run(scores, actual_classes, verbose, progress_bar)
+        if allow_parallel and ('n_jobs' in alg_options) and (alg_options['n_jobs'] != 1):
+            return linear_compute.run_parallel(scores, actual_classes, verbose, alg_options['n_jobs'])
+        else:
+            return linear_compute.run(scores, actual_classes, verbose, progress_bar)
     elif chosen_algorithm == STOCHASTIC_GRADIENT_DESCENT:
         return sgd_compute.run(scores, actual_classes, verbose, progress_bar)
     elif chosen_algorithm == GENETIC_ALGORITHM:
