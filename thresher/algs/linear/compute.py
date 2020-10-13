@@ -6,6 +6,9 @@ def run(scores, actual_classes, verbose, progress_bar) -> float:
 
     batch_size = len(scores)
 
+    if verbose:
+        print(f'Doing linear search with {batch_size} iterations. It can take some time, depending on the data volume.')
+
     for a, b in pairwise(sorted(scores)):
         iteration += 1
 
