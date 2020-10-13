@@ -40,6 +40,11 @@ enables multiprocessing, while the default value of `1` disables multiprocessing
 
 tbd
 
+List of parameters to customize:
+* `num_of_iters` (default: 200) - number of iterations during which algorithm tries to converge
+* `stop_thresh` (default: 0.001) - minimal value of improvement, below which algorithm stops
+* `alpha` (default: 0.01)
+
 ### Evolutionary algorithm
 
 This is a simulation approach which uses an evolutionary algorithm. It works by simulating multiple generations of a "population" of candidate solutions. During every iteration of a single generation, algorithm stochasticly evaluates the candidate solution. After the end of a single generation, we remove the from the population least fit agents (solutions), and do the _crossover_ between the left solitions to produce new "offspring" candidate solutions. Moreover, they may mutate to provide additional random chance. 
@@ -136,10 +141,12 @@ actual_labels = [-1, -1, 1, 1]
 print(f'Optimization result: {t.optimize_threshold(cases, actual_labels)}')
 ```
 
+See the [examples](https://github.com/oskar-j/thresher/tree/main/examples) directory for more sample code.
+
 ## Future work
 
-* adding more algorithms
-* publishing on conda
-* more heavy test loads
-* python docs
-* CI pipeline for automated tests
+* adding more algorithms,
+* publishing on conda,
+* more heavy test loads,
+* python docs,
+* CI pipeline for automated tests.
