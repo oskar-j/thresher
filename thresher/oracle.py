@@ -16,12 +16,15 @@ STOCHASTIC_GRID_SEARCH_ALGORITHM = algorithm.available_algorithms['sgrid']
 def run_oracle(data_traits: dict):
     data_volume = data_traits['data_length']
 
+    # some the 'ThresherPerformanceTest.ipynb' notebook for some thought process behind this
+    # an algorithm of recommendation for big datasets is currently 'sgd'
+
     if data_volume <= algorithm.available_algorithms['ls'].data_vol_thresh:
         chosen_algorithm = algorithm.available_algorithms['ls']
-    elif data_volume <= algorithm.available_algorithms['sgd'].data_vol_thresh:
-        chosen_algorithm = algorithm.available_algorithms['sgd']
+    elif data_volume <= algorithm.available_algorithms['grid'].data_vol_thresh:
+        chosen_algorithm = algorithm.available_algorithms['grid']
     else:
-        chosen_algorithm = algorithm.available_algorithms['gen']
+        chosen_algorithm = algorithm.available_algorithms['sgd']
 
     return chosen_algorithm
 

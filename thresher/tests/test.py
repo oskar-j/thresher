@@ -65,7 +65,7 @@ class ThresherMediumTest(unittest.TestCase):
                         msg="Checking proper result for the ThresherMediumTest")
 
     def test_oracle(self):
-        self.assertTrue(run_oracle({'data_length': len(self.scores)}) == algorithm.available_algorithms['sgd'])
+        self.assertTrue(run_oracle({'data_length': len(self.scores)}) == algorithm.available_algorithms['grid'])
 
 
 class ThresherSmallTest(unittest.TestCase):
