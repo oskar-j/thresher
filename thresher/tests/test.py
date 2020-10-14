@@ -12,6 +12,7 @@ class ThresherMediumTest(unittest.TestCase):
         self.t = thresher.Thresher(verbose=False, progress_bar=False)
         self.alt_t = thresher.Thresher(algorithm='linear', verbose=False, progress_bar=False)
         self.alt_t2 = thresher.Thresher(algorithm='sim', verbose=False, progress_bar=False)
+        self.alt_t3 = thresher.Thresher(algorithm='grid')
         print('Preparing data for ThresherMediumTest...')
         medium_data = get_sample_data(path='./')
 
@@ -35,6 +36,12 @@ class ThresherMediumTest(unittest.TestCase):
     def test_data_case_alt2(self):
         compute_result = self.alt_t2.optimize_threshold(self.scores, self.actual_classes)
         print(f'[ThresherMediumTest][Alg:sim] Result found: {compute_result}')
+        self.assertTrue(self.left_allowed <= compute_result < self.right_allowed,
+                        msg="Checking proper result for the ThresherMediumTest")
+
+    def test_data_case_alt3(self):
+        compute_result = self.alt_t3.optimize_threshold(self.scores, self.actual_classes)
+        print(f'[ThresherMediumTest][Alg:grid] Result found: {compute_result}')
         self.assertTrue(self.left_allowed <= compute_result < self.right_allowed,
                         msg="Checking proper result for the ThresherMediumTest")
 
@@ -96,8 +103,8 @@ class ThresherVerySmallTest(unittest.TestCase):
                         msg="Checking proper result for the ThresherVerySmallTest")
 
     def test_options(self):
-        self.assertTrue(len(self.t.get_supported_algorithms()) == 4,
-                        msg="Checking if there are four available algorithms")
+        self.assertTrue(len(self.t.get_supported_algorithms()) == 6,
+                        msg="Checking if there are four available algorithms (including oracle)")
 
 
 if __name__ == "__main__":

@@ -63,7 +63,9 @@ List of parameters to customize:
 
 ### Grid search
 
-Added in version `0.1.2`.
+Added in version `0.1.2`. This algorithm works by generate a grid of possible solutions, with a granularity set
+by parameter named `no_of_decimal_places`. All candidate solutions are evaluated thoroughly 
+and the best one is chosen at the end.
 
 List of parameters to customize:
 * `no_of_decimal_places` (default: 2) - generate the grid by rounding the number to the given number of decimal places

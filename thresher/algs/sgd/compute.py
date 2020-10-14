@@ -1,8 +1,14 @@
 import numpy as np
 from thresher.algs.common.stochastic import stochastic_process
+from thresher.utils import get_or_default
 
 
-def sgd_solver(eval_func, starting_point, gradient, verbose, num_of_iters=200, stop_thresh=0.001, alpha=0.01):
+num_of_iters_default = 200
+stop_thresh_default = 0.001
+alpha_default = 0.01
+
+
+def sgd_solver(eval_func, starting_point, gradient, verbose, num_of_iters, stop_thresh, alpha):
     previous_eval_point = starting_point
     previous_eval = 0.0
 
@@ -47,7 +53,7 @@ def sgd_solver(eval_func, starting_point, gradient, verbose, num_of_iters=200, s
     return previous_eval_point
 
 
-def run(scores, actual_classes, verbose, progress_bar) -> float:
+def run(scores, actual_classes, verbose, progress_bar, alg_options) -> float:
 
     def evaluate_threshold(threshold, previous_eval, random_factor=0.05):
         if verbose:
@@ -64,6 +70,11 @@ def run(scores, actual_classes, verbose, progress_bar) -> float:
 
     starting_gradient = 0.05
 
-    result = sgd_solver(evaluate_threshold, starting_point, starting_gradient, verbose)
+    num_of_iters = get_or_default(alg_options, 'num_of_iters', num_of_iters_default)
+    stop_thresh = get_or_default(alg_options, 'stop_thresh', stop_thresh_default)
+    alpha = get_or_default(alg_options, 'alpha', alpha_default)
+
+    result = sgd_solver(evaluate_threshold, starting_point, starting_gradient, verbose,
+                        num_of_iters=num_of_iters, stop_thresh=stop_thresh, alpha=alpha)
 
     return result

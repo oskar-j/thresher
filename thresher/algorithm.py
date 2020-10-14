@@ -10,6 +10,10 @@ available_algorithms = {'auto': Algorithm(id='auto', synonyms=['default', 'defau
                                          data_vol_thresh=10*1000, full_name='Stochastic gradient descent'),
                         'gen': Algorithm(id='gen', synonyms=['genetic', 'sim'],
                                          data_vol_thresh=None, full_name='Genetic algorithm'),
+                        'grid': Algorithm(id='grid', synonyms=['grid-search', 'gs'],
+                                          data_vol_thresh=None, full_name='Grid search'),
+                        'sgrid': Algorithm(id='sgrid', synonyms=['random-grid-search', 'rn-grid', 's-grid'],
+                                           data_vol_thresh=None, full_name='Stochastic grid search'),
                         }
 
 DEFAULT = available_algorithms['auto']
