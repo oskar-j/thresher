@@ -3,6 +3,8 @@
 A bare pandas implementation of a tool for finding the threshold which maximizes accuracy 
 of `predict_proba` like-outputs (from e.g. `scikit-learn`), in regard to the provided ground truth (labels).
 
+_Note: you can jump directly to the sample usage [here](https://github.com/oskar-j/thresher#sample-usage)._
+
 ## Project description
 
 Method interesting for the user is `optimize_threshold(scores, actual_classes)`, which is available 
@@ -149,4 +151,4 @@ See the [examples](https://github.com/oskar-j/thresher/tree/main/examples) direc
 * publishing on conda,
 * more heavy test loads,
 * python docs,
-* CI pipeline for automated tests.
+* CI/CD pipeline for automated tests.
