@@ -163,7 +163,7 @@ See the [examples](https://github.com/oskar-j/thresher/tree/main/examples) direc
 
 ## Performance tests
 
-A very basic performance test (with 10 repeats, on a real-world anonymized data consisting of `10^6` rows) can be found in the Notebook [located here](https://github.com/oskar-j/thresher/blob/main/examples/performance_test/TresherPerformanceTest.ipynb).
+A very basic performance test (with 10 repeats, on a real-world [anonymized data](https://github.com/oskar-j/thresher/blob/main/examples/performance_test/milion_samples.7z) consisting of `10^6` rows) can be found in the Notebook [located here](https://github.com/oskar-j/thresher/blob/main/examples/performance_test/TresherPerformanceTest.ipynb).
 
 ## Future work
 
