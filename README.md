@@ -65,9 +65,16 @@ List of parameters to customize:
 
 Added in version `0.1.2`.
 
+List of parameters to customize:
+* `no_of_decimal_places` (default: 2) - generate the grid by rounding the number to the given number of decimal places
+
 ### Stochastic Grid search
 
 Added in version `0.1.2`.
+
+List of parameters to customize:
+* `no_of_decimal_places` (default: 2) - generate the grid by rounding the number to the given number of decimal places
+* `stoch_ratio` (default: 0.05) - percentage of data to evaluate fit of a candidate number in the grid
 
 ## How to setup?
 
@@ -144,6 +151,10 @@ print(f'Optimization result: {t.optimize_threshold(cases, actual_labels)}')
 ```
 
 See the [examples](https://github.com/oskar-j/thresher/tree/main/examples) directory for more sample code.
+
+## Performance tests
+
+tbd
 
 ## Future work
 
