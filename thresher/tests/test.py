@@ -13,6 +13,13 @@ class ThresherMediumTest(unittest.TestCase):
         self.alt_t = thresher.Thresher(algorithm='linear', verbose=False, progress_bar=False)
         self.alt_t2 = thresher.Thresher(algorithm='sim', verbose=False, progress_bar=False)
         self.alt_t3 = thresher.Thresher(algorithm='grid')
+        self.alt_t4 = thresher.Thresher(algorithm='sgrid',
+                                        algorithm_params={'no_of_decimal_places': 2,
+                                                          'stoch_ratio': 0.10})
+        self.alt_t5 = thresher.Thresher(algorithm='sgrid',
+                                        algorithm_params={'no_of_decimal_places': 3,
+                                                          'stoch_ratio': 0.06,
+                                                          'reshuffle': True})
         print('Preparing data for ThresherMediumTest...')
         medium_data = get_sample_data(path='./')
 
@@ -42,6 +49,18 @@ class ThresherMediumTest(unittest.TestCase):
     def test_data_case_alt3(self):
         compute_result = self.alt_t3.optimize_threshold(self.scores, self.actual_classes)
         print(f'[ThresherMediumTest][Alg:grid] Result found: {compute_result}')
+        self.assertTrue(self.left_allowed <= compute_result < self.right_allowed,
+                        msg="Checking proper result for the ThresherMediumTest")
+
+    def test_data_case_alt4(self):
+        compute_result = self.alt_t4.optimize_threshold(self.scores, self.actual_classes)
+        print(f'[ThresherMediumTest][Alg:sgrid] Result found: {compute_result}')
+        self.assertTrue(self.left_allowed <= compute_result < self.right_allowed,
+                        msg="Checking proper result for the ThresherMediumTest")
+
+    def test_data_case_alt5(self):
+        compute_result = self.alt_t5.optimize_threshold(self.scores, self.actual_classes)
+        print(f'[ThresherMediumTest][Alg:sgrid(/w shuffle)] Result found: {compute_result}')
         self.assertTrue(self.left_allowed <= compute_result < self.right_allowed,
                         msg="Checking proper result for the ThresherMediumTest")
 
