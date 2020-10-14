@@ -130,10 +130,15 @@ Some of the above-mentioned algorithms allow to change their parameters.
 They should be provided in a dictionary, inside the `algorithm_params` parameter. 
 If no such customs parameters are provided, default values apply.
 
-Example:
+Examples:
 
 ```python
 t = thresher.Thresher(algorithm_params={'n_jobs': 3})
+```
+
+```python
+t = thresher.Thresher(algorithm_params={'no_of_decimal_places': 3,
+                                        'stoch_ratio': 0.10})
 ```
 
 ## Sample usage
