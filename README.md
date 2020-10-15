@@ -40,7 +40,10 @@ enables multiprocessing, while the default value of `1` disables multiprocessing
 
 ### 2-dim Stochastic Gradient Descent
 
-tbd
+This algorithm uses a naive implementation of the popular algorithm 'Stochastic Gradient Descent', which tries to converge over a function - in our case, it
+is an error curve representing ratio of miss-classifies for a threshold. Using a gradient, algorithm follows the curve to find the optimal value, that is, 
+a threshold producing the smaller number of miss-classifies. The disadvantage of this algorithm is it's questionable robustness - it may happen
+that it converges to a local optimum instead of a global one. 
 
 List of parameters to customize:
 * `num_of_iters` (default: 200) - number of iterations during which algorithm tries to converge
@@ -164,6 +167,7 @@ See the [examples](https://github.com/oskar-j/thresher/tree/main/examples) direc
 ## Performance tests
 
 A very basic performance test (with 10 repeats, on a real-world [anonymized data](https://github.com/oskar-j/thresher/blob/main/examples/performance_test/milion_samples.7z) consisting of `10^6` rows) can be found in the Notebook [located here](https://github.com/oskar-j/thresher/blob/main/examples/performance_test/TresherPerformanceTest.ipynb).
+Similar experiment, but with more iterations, was conducted in the file [TresherPerformanceTestExtended.ipynb](https://github.com/oskar-j/thresher/blob/main/examples/performance_test/TresherPerformanceTestExtended.ipynb) to test the oracle.
 
 ## Future work
 
