@@ -1,11 +1,17 @@
 # Thresher - THRESHold EvaluatoR for Python
 
+![eye illusion old vs young woman face](https://www.shared.com/content/images/2018/09/InkedUntitled-design--5-_LI_GH_content_1150px.jpg) 
+
+_That's either a young girl's head, or an old woman face - it all depends on what the brain chooses to see._
+
+_Choose your cut-off point wise!_
+
+## Project description
+
 A bare pandas implementation of a tool for finding the threshold which maximizes accuracy 
 of `predict_proba` like-outputs (from e.g. `scikit-learn`), in regard to the provided ground truth (labels).
 
 _Note: you can jump directly to the sample usage [here](https://github.com/oskar-j/thresher#sample-usage)._
-
-## Project description
 
 Method interesting for the user is `optimize_threshold(scores, actual_classes)`, which is available 
 from the `Thresher` class. This method, for given _scores_ and _actual classes_, 
