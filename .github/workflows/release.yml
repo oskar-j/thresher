@@ -1,10 +1,17 @@
 name: Release
 
-# Publishes a GitHub Release whenever a version bump lands on main.
+# Publishes a GitHub Release, then the same artifacts to PyPI, whenever a
+# version bump lands on main.
+#
 # The version in pyproject.toml is the single source of truth; the release is
-# tagged v<version> and its notes are taken from the matching CHANGELOG.md section.
-# Re-running on an already-released version is a no-op, so ordinary pushes to
-# main that do not change the version are safely ignored.
+# tagged v<version> and its notes are taken from the matching CHANGELOG.md
+# section. Re-running on an already-released version is a no-op, so ordinary
+# pushes to main that do not change the version are safely ignored.
+#
+# The PyPI upload is a dependent job rather than a separate workflow listening
+# for `release: published`. That is deliberate: releases created with the
+# default GITHUB_TOKEN do not trigger further workflow runs, so a
+# `release`-triggered workflow would never fire here.
 
 on:
   push:
@@ -17,6 +24,10 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      published: ${{ steps.check.outputs.exists == 'false' }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -63,6 +74,16 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         run: uv build
 
+      # Hand the exact same artifacts to the PyPI job, rather than rebuilding
+      # them there, so what is on PyPI matches what is on the release.
+      - name: Upload distributions for the PyPI job
+        if: steps.check.outputs.exists == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
       - name: Create the GitHub Release
         if: steps.check.outputs.exists == 'false'
         env:
@@ -73,3 +94,26 @@ jobs:
             --notes-file release_notes.md \
             --target "${GITHUB_SHA}" \
             dist/*
+
+  publish-pypi:
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    runs-on: ubuntu-latest
+
+    environment:
+      name: pypi
+      url: https://pypi.org/p/thresher-py
+
+    # Trusted Publishing (OIDC) - no API token is stored in this repository.
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download the distributions built for the release
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

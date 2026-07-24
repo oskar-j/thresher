@@ -42,7 +42,7 @@ Against a specific interpreter (3.10–3.14 are supported and verified):
 cd thresher/tests && uv run --isolated --python 3.14 --group dev python -m unittest test
 ```
 
-**Known flake:** `test_data_case_alt2` (the genetic/`sim` algorithm) fails roughly 10% of runs — measured 4 failures in 40 runs. It is not tied to any Python version. See the genetic-solver note under "Architecture" below; a red CI run on that test alone is likely this flake, so re-run before investigating.
+All 13 tests are deterministic in outcome as of 0.2.1. Several solvers are randomized internally, so exact returned thresholds vary between runs; the assertions check a band rather than an exact value. If a stochastic test starts failing intermittently, suspect a fitness/selection regression rather than a too-tight assertion.
 
 ### Examples
 
@@ -104,7 +104,11 @@ Also update the algorithm's section and parameter list in `README.md`; the READM
 
 `version` in `pyproject.toml` is the single source of truth (`uv version --short` reads it; `uv version --bump minor` writes it).
 
-Releases are automated. `.github/workflows/release.yml` runs on every push to `main`: it reads the version, and if no `v<version>` release exists yet, it extracts that version's section from `CHANGELOG.md`, runs `uv build`, and publishes a GitHub Release with the sdist and wheel attached. Pushes that do not change the version are a no-op.
+Releases are automated. `.github/workflows/release.yml` runs on every push to `main`: it reads the version, and if no `v<version>` release exists yet, it extracts that version's section from `CHANGELOG.md`, runs `uv build`, and publishes a GitHub Release with the sdist and wheel attached. A dependent `publish-pypi` job then uploads those same artifacts to PyPI via Trusted Publishing (OIDC — no API token is stored in the repo). Pushes that do not change the version are a no-op.
+
+The PyPI upload is a *job* in the release workflow rather than a separate workflow keyed on `release: published`. This is deliberate and must not be "simplified": releases created with the default `GITHUB_TOKEN` do not trigger further workflow runs, so a `release`-triggered workflow would never fire.
+
+PyPI's Trusted Publisher for this project must be configured with environment name `pypi` to match the workflow's `environment:` block, or the upload is rejected.
 
 So to cut a release: bump `version` in `pyproject.toml`, add a matching `## [x.y.z]` section to `CHANGELOG.md`, and merge to `main`. **The workflow fails if the CHANGELOG section is missing** — that is deliberate, to keep release notes from silently going empty.
 
@@ -112,5 +116,4 @@ Tags from 0.2.0 onward use the standard `v0.2.0` form. The three historical tags
 
 ## Known issues
 
-- `genetic/compute.py:61` sets fitness with `np.mean(agent['trait'])` — the mean of a single scalar — discarding the `trait_eff` samples accumulated on line 55. Selection therefore sorts by threshold value rather than by fitness. This is the likely cause of the `test_data_case_alt2` flake.
 - `examples/sample.py` and the test suite require *opposite* working directories (repo root vs. `thresher/tests/`), because `sample_data.py` takes its path as a plain string default. A `pathlib`-based path anchored to the module would fix both.

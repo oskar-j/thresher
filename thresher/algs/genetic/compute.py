@@ -56,9 +56,10 @@ def run(scores, actual_classes, verbose, progress_bar, alg_options) -> float:
                                                              scores, actual_classes, random_factor=stoch_ratio))
                 # for every iteration, get a stochastic fitness score
 
-        # calculate fitness score
+        # calculate fitness score - the mean mis-classification ratio over this
+        # generation's iterations, so that lower is fitter
         for agent in population:
-            agent['trait_eff'] = np.mean(agent['trait'])
+            agent['trait_eff'] = np.mean(agent['trait_eff'])
 
         # select most fit (SUS)
         sort_by_fit = [_ for _ in sorted(population, key=lambda x: x['trait_eff'], reverse=False)][0:sus_factor]
