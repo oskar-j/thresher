@@ -96,20 +96,42 @@ from the sources (latest revision), or from the PyPI repository (stable release)
 
 ### Requirements
 
-Tested with Python `3.7+`, on a standard Unix environment
+Requires Python `3.10+`. Tested on Python 3.10, 3.11, 3.12, 3.13 and 3.14.
 
 ### Installation
-
-Installation from source:
-
-```
-pip install git+https://github.com/oskar-j/thresher.git
-```
 
 Stable release using the `pip` tool:
 
 ```
 pip install thresher-py
+```
+
+Or with [uv](https://docs.astral.sh/uv/):
+
+```
+uv add thresher-py
+```
+
+Installation from source (latest revision):
+
+```
+pip install git+https://github.com/oskar-j/thresher.git
+```
+
+### Development setup
+
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management, with
+`pyproject.toml` and a locked `uv.lock`:
+
+```
+uv sync --group dev
+```
+
+Run the test suite (it loads its `.xlsx` fixtures through a relative path, so it must be
+run from inside `thresher/tests`):
+
+```
+cd thresher/tests && uv run python -m unittest test
 ```
 
 ## Custom parameters
@@ -180,5 +202,4 @@ Similar experiment, but with more iterations, was conducted in the file [Tresher
 * adding more algorithms,
 * publishing on conda,
 * more heavy test loads,
-* python docs,
-* CI/CD pipeline for automated tests.
+* python docs.
