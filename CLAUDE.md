@@ -108,7 +108,9 @@ Releases are automated. `.github/workflows/release.yml` runs on every push to `m
 
 The PyPI upload is a *job* in the release workflow rather than a separate workflow keyed on `release: published`. This is deliberate and must not be "simplified": releases created with the default `GITHUB_TOKEN` do not trigger further workflow runs, so a `release`-triggered workflow would never fire.
 
-PyPI's Trusted Publisher for this project must be configured with environment name `pypi` to match the workflow's `environment:` block, or the upload is rejected.
+PyPI's Trusted Publisher for this project must be configured with environment name `pypi` to match the workflow's `environment:` block, or left blank (blank matches any environment). A mismatched name is rejected.
+
+If the PyPI upload fails after the GitHub Release was already created, re-run the workflow via `workflow_dispatch` with `force_publish: true`. A plain re-run would see the release already exists and skip everything; `force_publish` rebuilds and retries the upload only, leaving the existing release untouched.
 
 So to cut a release: bump `version` in `pyproject.toml`, add a matching `## [x.y.z]` section to `CHANGELOG.md`, and merge to `main`. **The workflow fails if the CHANGELOG section is missing** — that is deliberate, to keep release notes from silently going empty.
 
