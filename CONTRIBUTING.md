@@ -17,7 +17,9 @@ Oskar Jarczyk (`oskar.jarczyk@gmail.com`)
 
 ## Testing
 
-* Please make sure `nosetests` pass fully
+* Set up the environment with `uv sync --group dev`
+* Please make sure the full suite passes: `cd thresher/tests && uv run python -m unittest test`
+* Tests must be run from inside `thresher/tests`, as the fixtures are loaded via a relative path
 
 ## What is wanted at the moment
 
