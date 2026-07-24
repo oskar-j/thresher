@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-24
+
+### Fixed
+
+- Evolutionary algorithm: fitness is now computed from the accumulated per-iteration
+  mis-classification samples instead of from the agent's own threshold value. The previous
+  code called `np.mean()` on a scalar, so it discarded every fitness sample it had gathered
+  and selected agents by threshold value rather than by how well they performed. Results are
+  now materially closer to the true optimum, and the intermittent `test_data_case_alt2`
+  failure (~10% of runs) is resolved.
+
+### Added
+
+- Automated publishing to PyPI, using [Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
+  (OIDC), triggered after a GitHub Release is created.
+
 ## [0.2.0] - 2026-07-24
 
 ### Added
@@ -71,7 +87,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/oskar-j/thresher/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/oskar-j/thresher/compare/v_01_2...v0.2.0
 [0.1.2]: https://github.com/oskar-j/thresher/compare/v_01_1...v_01_2
 [0.1.1]: https://github.com/oskar-j/thresher/compare/v_01_0...v_01_1

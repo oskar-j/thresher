@@ -1,15 +1,27 @@
 name: Release
 
-# Publishes a GitHub Release whenever a version bump lands on main.
+# Publishes a GitHub Release, then the same artifacts to PyPI, whenever a
+# version bump lands on main.
+#
 # The version in pyproject.toml is the single source of truth; the release is
-# tagged v<version> and its notes are taken from the matching CHANGELOG.md section.
-# Re-running on an already-released version is a no-op, so ordinary pushes to
-# main that do not change the version are safely ignored.
+# tagged v<version> and its notes are taken from the matching CHANGELOG.md
+# section. Re-running on an already-released version is a no-op, so ordinary
+# pushes to main that do not change the version are safely ignored.
+#
+# The PyPI upload is a dependent job rather than a separate workflow listening
+# for `release: published`. That is deliberate: releases created with the
+# default GITHUB_TOKEN do not trigger further workflow runs, so a
+# `release`-triggered workflow would never fire here.
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      force_publish:
+        description: "Retry the PyPI upload for the current version even though its GitHub Release already exists"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -17,6 +29,10 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.check.outputs.publish }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,16 +49,28 @@ jobs:
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Resolved version ${VERSION}"
 
-      - name: Check whether the release already exists
+      # `exists` gates creating the GitHub Release; `publish` gates building and
+      # uploading to PyPI. They differ only on a forced re-run, which exists so a
+      # failed PyPI upload can be retried without deleting and recreating the release.
+      - name: Decide what this run should do
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
+          FORCE_PUBLISH: ${{ inputs.force_publish }}
         run: |
           if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Release ${{ steps.version.outputs.tag }} already exists - nothing to do."
+            EXISTS=true
+            echo "Release ${{ steps.version.outputs.tag }} already exists."
           else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
+            EXISTS=false
+          fi
+          echo "exists=${EXISTS}" >> "$GITHUB_OUTPUT"
+
+          if [ "${EXISTS}" = "false" ] || [ "${FORCE_PUBLISH}" = "true" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing to do."
           fi
 
       - name: Extract release notes from CHANGELOG.md
@@ -60,8 +88,18 @@ jobs:
           cat release_notes.md
 
       - name: Build distributions
-        if: steps.check.outputs.exists == 'false'
+        if: steps.check.outputs.publish == 'true'
         run: uv build
+
+      # Hand the exact same artifacts to the PyPI job, rather than rebuilding
+      # them there, so what is on PyPI matches what is on the release.
+      - name: Upload distributions for the PyPI job
+        if: steps.check.outputs.publish == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
 
       - name: Create the GitHub Release
         if: steps.check.outputs.exists == 'false'
@@ -73,3 +111,29 @@ jobs:
             --notes-file release_notes.md \
             --target "${GITHUB_SHA}" \
             dist/*
+
+  publish-pypi:
+    needs: release
+    if: needs.release.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+
+    environment:
+      name: pypi
+      url: https://pypi.org/p/thresher-py
+
+    # Trusted Publishing (OIDC) - no API token is stored in this repository.
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download the distributions built for the release
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Makes a forced re-run safe if an earlier attempt uploaded some files.
+          skip-existing: true
