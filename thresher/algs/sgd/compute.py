@@ -24,6 +24,15 @@ def sgd_solver(eval_func, starting_point, gradient, verbose, num_of_iters, stop_
         previous_eval = evaluation
         previous_gain = gain
 
+        # An evaluation of 0.0 means the previous point mis-classified nothing in its
+        # sample, so there is nothing left to improve on - and the relative gain below
+        # would divide by it. 'previous_eval_point' is still that point at this stage
+        # of the iteration, so it is what we return.
+        if previous_eval == 0.0:
+            if verbose:
+                print(f'SGD iteration {iter_no}. Previous evaluation is 0.0 (nothing mis-classified) - stopping.')
+            return previous_eval_point
+
         if verbose:
             print(f'SGD iteration {iter_no}. Previous evaluation: {previous_eval} for X:{previous_eval_point} and previous gain: {previous_gain}')
 

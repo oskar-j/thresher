@@ -63,9 +63,9 @@ class Thresher(ThresherBase):
         self.options['algorithm'] = algorithm.retrieve_by_alias(self.options['algorithm'])
 
     def get_current_algorithm(self):
-        """Get current language."""
-        with self.options['algorithm'] as current_algorithm:
-            return {'name': current_algorithm.id, 'object': current_algorithm}
+        """Get the algorithm this instance is currently set to use."""
+        current_algorithm = self.options['algorithm']
+        return {'name': current_algorithm.id, 'object': current_algorithm}
 
     def get_current_options(self):
         return self.options

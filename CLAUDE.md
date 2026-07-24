@@ -118,21 +118,13 @@ Tags from 0.2.0 onward use the standard `v0.2.0` form. The three historical tags
 
 ## Known issues
 
-All of the below were reproduced against 0.2.1 and are unfixed. None are caught by the test suite, which only exercises the medium fixture and a few tiny inputs, and which uses the default (oracle-selected) algorithm for everything except the five explicit `ThresherMediumTest` cases. Anything reached only by explicitly passing `algorithm=` is effectively untested.
+The crashes previously listed here were fixed in 0.2.2 and are now covered by `ThresherCrashRegressionTest`. What remains is unfixed and reproduced against 0.2.2.
 
-### Crashes
-
-- **`sgd` divides by zero at `algs/sgd/compute.py:42`.** `gradient * (gain/previous_eval)` blows up whenever a stochastic evaluation returns exactly 0 mis-classifications, because `previous_eval` is that ratio. This is not an edge case: on cleanly separable data it fires at most data volumes (reproduced at N=200, 500, 1000 and 5000). It matters because `sgd` is what the oracle selects for N > 50,000 — the largest inputs, where a crash is most expensive.
-
-- **The stochastic solvers divide by zero on small inputs.** `int(stoch_ratio * N)` floors to 0, so `random.sample(..., 0)` yields an empty sample and the accuracy ratio divides by zero — in `algs/common/stochastic.py:19` for `gen`/`sgd`, and `algs/grid/compute.py:55` for `sgrid`. Thresholds follow directly from each default ratio: `gen` (0.02) fails below N=50, `sgrid` (0.05) below N=20. `ls` and `grid` are unaffected. A `max(1, int(...))` floor fixes the whole family.
-
-- **`get_current_algorithm()` always raises `TypeError`.** `interface.py:67` does `with self.options['algorithm'] as current_algorithm:` on an `Algorithm` namedtuple, which has no context-manager protocol. The method cannot ever have worked; nothing calls it. (Its docstring, and `get_supported_algorithms`', still say "language" — copy-paste leftovers.)
-
-- **`n_jobs=-1` raises `TypeError`.** README documents it as "use all available processors except one", but `algs/linear/compute.py:37` computes `chunksize=int(batch_size/n_jobs)`, which goes negative (`int(200/-1) == -200`). `pool.map` then yields `None` entries and the result sort fails. The process-count argument handles `-1` correctly — only `chunksize` doesn't. Positive `n_jobs` works.
+Coverage is still thin in the same way that let those crashes ship: outside that regression class, the suite exercises one fixture and a few tiny inputs, and uses the oracle-selected algorithm for everything except the five explicit `ThresherMediumTest` cases. Paths reached only by passing `algorithm=` explicitly remain lightly tested.
 
 ### Silent wrong answers
 
-- **`sgd` can return a threshold outside `[0, 1]`.** Nothing clamps the walk to the valid probability range, so it can wander off and return e.g. `1.8972` or `2.8036` for a `predict_proba` cut-off. This is worse than the crash above, since callers get a plausible-looking float that classifies everything into one class.
+- **`sgd` can return a threshold outside `[0, 1]`.** Nothing clamps the walk to the valid probability range, so it can wander off and return e.g. `1.8972` for a `predict_proba` cut-off (still reproducible at N=2000 on separable data). Callers get a plausible-looking float that classifies every sample into one class. This is the most damaging issue left, and fixing it needs a decision rather than a patch: clamp the walk into `[0, 1]`, or let it diverge and fail loudly. Clamping silently is not obviously right, since divergence indicates the gradient step is misbehaving.
 
 ### Rough edges
 

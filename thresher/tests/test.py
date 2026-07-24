@@ -126,6 +126,55 @@ class ThresherVerySmallTest(unittest.TestCase):
                         msg="Checking if there are four available algorithms (including oracle)")
 
 
+class ThresherCrashRegressionTest(unittest.TestCase):
+    """Covers crashes fixed in 0.2.2.
+
+    Every case here raised an exception before that release. They exercise paths the
+    rest of the suite never reaches: algorithms selected explicitly rather than by the
+    oracle, small inputs, and cleanly separable data.
+    """
+
+    @staticmethod
+    def _separable(n):
+        # Cleanly separable, which drives the stochastic evaluations to a zero
+        # mis-classification ratio - the case that used to divide by zero in sgd.
+        scores = [(i + 1) / (n + 1) for i in range(n)]
+        return scores, [-1] * (n // 2) + [1] * (n - n // 2)
+
+    def test_small_input_does_not_divide_by_zero(self):
+        # int(stoch_ratio * N) floored to 0 below N=50 for 'gen' and N=20 for 'sgrid',
+        # producing an empty sample.
+        for algorithm in ('gen', 'sgrid', 'sgd'):
+            for n in (4, 9, 19, 21, 45):
+                with self.subTest(algorithm=algorithm, n=n):
+                    scores, actual_classes = self._separable(n)
+                    result = thresher.Thresher(algorithm=algorithm).optimize_threshold(scores, actual_classes)
+                    self.assertIsInstance(result, float)
+
+    def test_sgd_on_separable_data(self):
+        # A perfect stochastic evaluation made 'previous_eval' 0.0, which the gradient
+        # update then divided by.
+        for n in (200, 500, 1000):
+            with self.subTest(n=n):
+                scores, actual_classes = self._separable(n)
+                result = thresher.Thresher(algorithm='sgd').optimize_threshold(scores, actual_classes)
+                self.assertIsInstance(result, float)
+
+    def test_get_current_algorithm(self):
+        # Used 'with' on an Algorithm namedtuple, so it raised TypeError unconditionally.
+        t = thresher.Thresher(algorithm='grid')
+        current = t.get_current_algorithm()
+        self.assertEqual(current['name'], 'grid')
+        self.assertEqual(current['object'], algorithm.available_algorithms['grid'])
+
+    def test_linear_parallel_all_processors(self):
+        # n_jobs=-1 is documented in the README, but made chunksize negative.
+        scores, actual_classes = self._separable(200)
+        t = thresher.Thresher(algorithm='linear', algorithm_params={'n_jobs': -1})
+        result = t.optimize_threshold(scores, actual_classes)
+        self.assertTrue(0.0 <= result <= 1.0)
+
+
 if __name__ == "__main__":
     print('Unit testing initiated. Running 4 different test cases, please wait....')
     unittest.main()
