@@ -118,4 +118,26 @@ Tags from 0.2.0 onward use the standard `v0.2.0` form. The three historical tags
 
 ## Known issues
 
+All of the below were reproduced against 0.2.1 and are unfixed. None are caught by the test suite, which only exercises the medium fixture and a few tiny inputs, and which uses the default (oracle-selected) algorithm for everything except the five explicit `ThresherMediumTest` cases. Anything reached only by explicitly passing `algorithm=` is effectively untested.
+
+### Crashes
+
+- **`sgd` divides by zero at `algs/sgd/compute.py:42`.** `gradient * (gain/previous_eval)` blows up whenever a stochastic evaluation returns exactly 0 mis-classifications, because `previous_eval` is that ratio. This is not an edge case: on cleanly separable data it fires at most data volumes (reproduced at N=200, 500, 1000 and 5000). It matters because `sgd` is what the oracle selects for N > 50,000 — the largest inputs, where a crash is most expensive.
+
+- **The stochastic solvers divide by zero on small inputs.** `int(stoch_ratio * N)` floors to 0, so `random.sample(..., 0)` yields an empty sample and the accuracy ratio divides by zero — in `algs/common/stochastic.py:19` for `gen`/`sgd`, and `algs/grid/compute.py:55` for `sgrid`. Thresholds follow directly from each default ratio: `gen` (0.02) fails below N=50, `sgrid` (0.05) below N=20. `ls` and `grid` are unaffected. A `max(1, int(...))` floor fixes the whole family.
+
+- **`get_current_algorithm()` always raises `TypeError`.** `interface.py:67` does `with self.options['algorithm'] as current_algorithm:` on an `Algorithm` namedtuple, which has no context-manager protocol. The method cannot ever have worked; nothing calls it. (Its docstring, and `get_supported_algorithms`', still say "language" — copy-paste leftovers.)
+
+- **`n_jobs=-1` raises `TypeError`.** README documents it as "use all available processors except one", but `algs/linear/compute.py:37` computes `chunksize=int(batch_size/n_jobs)`, which goes negative (`int(200/-1) == -200`). `pool.map` then yields `None` entries and the result sort fails. The process-count argument handles `-1` correctly — only `chunksize` doesn't. Positive `n_jobs` works.
+
+### Silent wrong answers
+
+- **`sgd` can return a threshold outside `[0, 1]`.** Nothing clamps the walk to the valid probability range, so it can wander off and return e.g. `1.8972` or `2.8036` for a `predict_proba` cut-off. This is worse than the crash above, since callers get a plausible-looking float that classifies everything into one class.
+
+### Rough edges
+
+- **An unknown algorithm name raises a bare `StopIteration`.** `algorithm.retrieve_by_alias()` ends in `next(...)` with no default. `set_algorithm()` catches it and prints a helpful message, but the `Thresher(algorithm='typo')` constructor path does not, so users get `StopIteration` with no message. `UNKNOWN_ALGORITHM` in `exceptions.py` already has the right text for this.
+
+- **Single-class input fails an assertion.** `run_computations()` opens with `assert set(actual_classes) == {-1, 1}`, so passing labels that are all one class raises a bare `AssertionError` with no explanation. Note also that assertions vanish under `python -O`, which would turn this into undefined behaviour further down.
+
 - `examples/sample.py` and the test suite require *opposite* working directories (repo root vs. `thresher/tests/`), because `sample_data.py` takes its path as a plain string default. A `pathlib`-based path anchored to the module would fix both.
