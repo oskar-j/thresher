@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-07-25
+
+### Fixed
+
+- An unknown algorithm name now raises `ValueError` naming the value and listing the valid
+  algorithms, instead of a bare `StopIteration` with no message. `retrieve_by_alias()` ended
+  in a `next()` call with no default, so `Thresher(algorithm='typo')` surfaced an exception
+  that read as an internal bug rather than a rejected argument.
+- Invalid labels now raise `ValueError` explaining the problem, instead of a message-less
+  `AssertionError`. Single-class input says both classes are required; labels outside
+  `(-1, 1)` point at the `labels` constructor option; empty input is named as such. The
+  previous check was an `assert`, which `python -O` strips entirely — malformed input then
+  reached the solvers rather than being rejected, and there is now a test that runs under
+  `-O` to keep that from returning.
+
+### Changed
+
+- `set_algorithm()` now raises `ValueError` for an unknown name. It previously printed a
+  message and returned successfully with the *old* algorithm still selected, so callers
+  were told a switch had happened when it had not. Code that relied on that silent no-op
+  will now see an exception.
+
+### Added
+
+- `ThresherInputValidationTest`, covering each of the above plus the alias lookups that
+  must keep working.
+
 ## [0.2.2] - 2026-07-24
 
 ### Fixed
@@ -128,7 +155,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/oskar-j/thresher/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/oskar-j/thresher/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/oskar-j/thresher/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/oskar-j/thresher/compare/v_01_2...v0.2.0

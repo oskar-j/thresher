@@ -71,10 +71,14 @@ class Thresher(ThresherBase):
         return self.options
 
     def set_algorithm(self, algorithm_name):
-        try:
-            self.options['algorithm'] = algorithm.retrieve_by_alias(algorithm_name)
-        except StopIteration:
-            print('Unknown algorithm, please use a name available in get_supported_algorithms()')
+        """Select the algorithm to use, by id or by one of its synonyms.
+
+        Raises:
+            ValueError: if the name matches no known algorithm. This previously printed a
+                message and carried on with the old algorithm still in place, which left
+                callers believing a switch had happened when it had not.
+        """
+        self.options['algorithm'] = algorithm.retrieve_by_alias(algorithm_name)
         return self
 
     @staticmethod

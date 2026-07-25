@@ -1,5 +1,7 @@
 from collections import namedtuple
 
+from thresher.exceptions import UNKNOWN_ALGORITHM_NAME
+
 Algorithm = namedtuple('Algorithm', ['id', 'full_name', 'synonyms', 'data_vol_thresh'])
 
 available_algorithms = {'auto': Algorithm(id='auto', synonyms=['default', 'default_heuristics'],
@@ -25,4 +27,10 @@ def retrieve_by_alias(name: str):
         return available_algorithms[name]
     except KeyError:
         # try to match by the 'alternate name'
-        return next(_ for _ in available_algorithms.values() if name in _.synonyms)
+        try:
+            return next(_ for _ in available_algorithms.values() if name in _.synonyms)
+        except StopIteration:
+            # 'next' on an exhausted generator raises StopIteration, which says nothing
+            # about what went wrong and reads as a bug rather than a bad argument.
+            raise ValueError(UNKNOWN_ALGORITHM_NAME.format(
+                name=name, available=', '.join(sorted(available_algorithms)))) from None

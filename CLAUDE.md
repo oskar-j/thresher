@@ -118,18 +118,16 @@ Tags from 0.2.0 onward use the standard `v0.2.0` form. The three historical tags
 
 ## Known issues
 
-The crashes previously listed here, and the `sgd` out-of-range results, were fixed in 0.2.2 and are covered by `ThresherCrashRegressionTest` and `ThresherResultRangeTest`. What remains is unfixed and reproduced against 0.2.2.
+The crashes and the `sgd` out-of-range results were fixed in 0.2.2; the unhelpful error paths were fixed in 0.2.3. All are covered by `ThresherCrashRegressionTest`, `ThresherResultRangeTest` and `ThresherInputValidationTest`. What remains below is unfixed and reproduced against 0.2.3.
 
-Coverage is still thin in the same way that let those defects ship: outside those two regression classes, the suite exercises one fixture and a few tiny inputs, and uses the oracle-selected algorithm for everything except the five explicit `ThresherMediumTest` cases. Paths reached only by passing `algorithm=` explicitly remain lightly tested.
+Coverage is still thin in the same way that let those defects ship: outside those three regression classes, the suite exercises one fixture and a few tiny inputs, and uses the oracle-selected algorithm for everything except the five explicit `ThresherMediumTest` cases. Paths reached only by passing `algorithm=` explicitly remain lightly tested.
 
 ### Accuracy
 
 - **`sgd` remains the least accurate solver**, even after the 0.2.2 fixes. On separable data its mean error against linear search is ~0.03 at 5,000 rows, against ~0.008 for the other algorithms. It is a naive implementation over a stochastic sample and can still settle short of the optimum; `ThresherResultRangeTest` only asserts it lands within 0.15. Worth remembering that the oracle selects it for every input above 50,000 rows, so it is the solver doing the most consequential work.
 
+- **Mismatched input lengths are accepted silently.** `optimize_threshold()` never checks that `scores` and `actual_classes` are the same length, and the solvers pair them with `zip()`, which stops at the shorter one. Passing 6 scores and 4 labels returns `0.25` rather than complaining — the surplus scores are simply ignored. A length check in `validate_actual_classes()`'s caller would close it, but note that would newly raise for anyone currently relying on the truncation, so it is a behaviour change rather than a pure fix.
+
 ### Rough edges
-
-- **An unknown algorithm name raises a bare `StopIteration`.** `algorithm.retrieve_by_alias()` ends in `next(...)` with no default. `set_algorithm()` catches it and prints a helpful message, but the `Thresher(algorithm='typo')` constructor path does not, so users get `StopIteration` with no message. `UNKNOWN_ALGORITHM` in `exceptions.py` already has the right text for this.
-
-- **Single-class input fails an assertion.** `run_computations()` opens with `assert set(actual_classes) == {-1, 1}`, so passing labels that are all one class raises a bare `AssertionError` with no explanation. Note also that assertions vanish under `python -O`, which would turn this into undefined behaviour further down.
 
 - `examples/sample.py` and the test suite require *opposite* working directories (repo root vs. `thresher/tests/`), because `sample_data.py` takes its path as a plain string default. A `pathlib`-based path anchored to the module would fix both.
