@@ -1,4 +1,6 @@
 import random
+import subprocess
+import sys
 import unittest
 import thresher
 from thresher import algorithm
@@ -208,6 +210,61 @@ class ThresherResultRangeTest(unittest.TestCase):
                 reference = thresher.Thresher(algorithm='ls').optimize_threshold(scores, actual_classes)
                 result = thresher.Thresher(algorithm='sgd').optimize_threshold(scores, actual_classes)
                 self.assertLess(abs(result - reference), 0.15)
+
+
+class ThresherInputValidationTest(unittest.TestCase):
+    """Covers the error reporting fixed in 0.2.3.
+
+    Bad input previously surfaced as a bare StopIteration or a message-less
+    AssertionError, neither of which told the caller what was actually wrong.
+    """
+
+    def test_unknown_algorithm_in_constructor(self):
+        with self.assertRaises(ValueError) as ctx:
+            thresher.Thresher(algorithm='does-not-exist')
+        message = str(ctx.exception)
+        self.assertIn('does-not-exist', message)
+        # the message should list what the caller could have used instead
+        for name in algorithm.available_algorithms:
+            self.assertIn(name, message)
+
+    def test_unknown_algorithm_in_set_algorithm(self):
+        # This used to print a warning and silently keep the previous algorithm, so the
+        # caller believed a switch had happened when it had not.
+        t = thresher.Thresher(algorithm='grid')
+        with self.assertRaises(ValueError):
+            t.set_algorithm('does-not-exist')
+        self.assertEqual(t.get_current_algorithm()['name'], 'grid')
+
+    def test_known_aliases_still_resolve(self):
+        for alias, expected in (('sim', 'gen'), ('genetic', 'gen'), ('linear', 'ls'),
+                                ('gs', 'grid'), ('s-grid', 'sgrid'), ('curve_fitting', 'sgd')):
+            with self.subTest(alias=alias):
+                self.assertEqual(thresher.Thresher(algorithm=alias).get_current_algorithm()['name'], expected)
+
+    def test_single_class_labels(self):
+        with self.assertRaises(ValueError) as ctx:
+            thresher.Thresher().optimize_threshold([0.1, 0.2, 0.3], [-1, -1, -1])
+        self.assertIn('single class', str(ctx.exception))
+
+    def test_unmapped_labels_point_at_the_labels_option(self):
+        with self.assertRaises(ValueError) as ctx:
+            thresher.Thresher().optimize_threshold([0.1, 0.2], [0, 1])
+        self.assertIn('labels', str(ctx.exception))
+
+    def test_empty_input(self):
+        with self.assertRaises(ValueError):
+            thresher.Thresher().optimize_threshold([], [])
+
+    def test_validation_survives_optimized_mode(self):
+        # The old check was an `assert`, which python -O strips entirely - malformed input
+        # would then reach the solvers instead of being rejected.
+        source = ('import thresher;'
+                  'thresher.Thresher().optimize_threshold([0.1, 0.2, 0.3], [-1, -1, -1])')
+        completed = subprocess.run([sys.executable, '-O', '-c', source],
+                                   capture_output=True, text=True)
+        self.assertNotEqual(completed.returncode, 0, msg='invalid input was accepted under -O')
+        self.assertIn('ValueError', completed.stderr)
 
 
 if __name__ == "__main__":

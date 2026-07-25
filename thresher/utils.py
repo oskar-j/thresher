@@ -1,8 +1,31 @@
 from itertools import tee
 
+from thresher.exceptions import EMPTY_INPUT, SINGLE_CLASS_LABELS, UNEXPECTED_LABELS
+
 
 NEGATIVE_LABEL = -1
 POSITIVE_LABEL = 1
+
+
+def validate_actual_classes(actual_classes):
+    """Check that the labels are usable before any algorithm runs.
+
+    This was previously a bare `assert set(actual_classes) == {-1, 1}`, which said nothing
+    about what was wrong - and, being an assertion, vanished entirely under `python -O`,
+    letting malformed input reach the solvers instead.
+    """
+    present = set(actual_classes)
+
+    if not present:
+        raise ValueError(EMPTY_INPUT)
+
+    unexpected = present - {NEGATIVE_LABEL, POSITIVE_LABEL}
+    if unexpected:
+        raise ValueError(UNEXPECTED_LABELS.format(
+            unexpected=', '.join(repr(_) for _ in sorted(unexpected, key=repr))))
+
+    if present != {NEGATIVE_LABEL, POSITIVE_LABEL}:
+        raise ValueError(SINGLE_CLASS_LABELS.format(only=repr(next(iter(present)))))
 
 
 def map_labels(labels, mapping):

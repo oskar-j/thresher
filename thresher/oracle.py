@@ -4,6 +4,7 @@ from thresher.algs.sgd import compute as sgd_compute
 from thresher.algs.genetic import compute as gen_compute
 from thresher.algs.grid import compute as grid_compute
 from thresher.exceptions import UNKNOWN_ALGORITHM
+from thresher.utils import validate_actual_classes
 
 
 LINEAR_ALGORITHM = algorithm.available_algorithms['ls']
@@ -31,7 +32,7 @@ def run_oracle(data_traits: dict):
 
 def run_computations(chosen_algorithm: algorithm.Algorithm, scores, actual_classes,
                      verbose, progress_bar, allow_parallel, alg_options) -> float:
-    assert set(actual_classes) == {-1, 1}
+    validate_actual_classes(actual_classes)
 
     if verbose:
         print(f'Executing the {chosen_algorithm.full_name} algorithm... please wait for the result.')
