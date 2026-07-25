@@ -44,6 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   coverage previously. The range test asserts every algorithm returns a threshold within
   the span of its input scores.
 - Badges in `README.md` for the released version, build status, downloads and stars.
+- The README illustration is now vendored at `assets/optical-illusion.png` instead of being
+  hotlinked from a third-party site, so it cannot break or change underneath the project.
+  It is W. E. Hill's "My Wife and My Mother-in-Law" (1915), public domain.
 
 ## [0.2.1] - 2026-07-24
 

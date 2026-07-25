@@ -5,7 +5,9 @@
 [![Downloads](https://img.shields.io/pepy/dt/thresher-py)](https://pepy.tech/project/thresher-py)
 [![Stars](https://img.shields.io/github/stars/oskar-j/thresher)](https://github.com/oskar-j/thresher/stargazers)
 
-![eye illusion old vs young woman face](https://www.researchgate.net/profile/Kirk-Stamant-2/publication/233626368/figure/fig1/AS:300058999312388@1448551048203/The-optical-illusion-The-Young-Girl-Old-Woman.png) 
+![eye illusion old vs young woman face](https://raw.githubusercontent.com/oskar-j/thresher/main/assets/optical-illusion.png)
+
+<sub>"My Wife and My Mother-in-Law" by W. E. Hill (1915), public domain, via [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:My_Wife_and_My_Mother-In-Law_(Hill).svg).</sub>
 
 _That's either a young girl's head, or an old woman face - it all depends on what the brain chooses to see._
 
