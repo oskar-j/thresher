@@ -1,3 +1,5 @@
+"""The registry of selectable algorithms, and lookup by name."""
+
 from typing import NamedTuple
 
 from thresher.exceptions import UNKNOWN_ALGORITHM_NAME
@@ -66,8 +68,16 @@ DEFAULT = available_algorithms["auto"]
 def retrieve_by_alias(name: str) -> Algorithm:
     """Resolve an algorithm by its id or by one of its synonyms.
 
+    Args:
+        name: an algorithm id such as `'grid'`, or a synonym such as `'sim'`. Matched
+            case-insensitively, ids first and synonyms second.
+
+    Returns:
+        The matching `Algorithm` from `available_algorithms`.
+
     Raises:
-        ValueError: if the name matches nothing.
+        ValueError: if the name matches nothing. The message names the offending value
+            and lists the ids that would have worked.
     """
     name = name.lower()
     try:

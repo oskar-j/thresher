@@ -1,3 +1,10 @@
+"""An evolutionary algorithm over a population of candidate thresholds.
+
+Each generation scores every agent against random subsamples, discards the least fit, and
+breeds replacements by crossover between the survivors, with an occasional mutation. Like
+the other stochastic solvers it trades exactness for speed on larger inputs.
+"""
+
 import random
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -41,6 +48,31 @@ def run(
     progress_bar: bool,
     alg_options: Mapping[str, Any],
 ) -> float:
+    """Evolve a population of candidate thresholds and return the population's mean.
+
+    The initial population is seeded across the range between the mean score of the
+    negative class and that of the positive class, so the search starts where the
+    boundary is likely to lie.
+
+    Args:
+        scores: the values being split.
+        actual_classes: the matching ground-truth classes, as -1 and 1.
+        verbose: print the population after each generation. Enabling this disables the
+            progress bar, since the two would fight over the terminal.
+        progress_bar: draw a progress bar on stdout, one step per generation.
+        alg_options: recognised keys, each falling back to its module-level default:
+            `population_size` (30) agents per generation; `number_of_generations` (20)
+            rounds of selection; `number_of_iterations` (10) fitness samples drawn per
+            agent per generation; `sus_factor` (2) how many of the least fit are left
+            child-less; `stoch_ratio` (0.02) fraction of the data each fitness sample
+            reads; `mutation_chance` (0.05) probability that one agent per generation is
+            nudged; `mutation_factor` (0.10) the size of that nudge.
+
+    Returns:
+        The mean trait of the final population. Because it averages the survivors rather
+        than picking the single fittest, a population that has not converged pulls the
+        result toward the middle of its spread.
+    """
     if verbose and progress_bar:
         print("Warning! Enabling verbosity automatically disables a progress bar.")
         progress_bar = False

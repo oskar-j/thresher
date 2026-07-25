@@ -29,7 +29,10 @@ same as in 0.2.3. This release is about the shape of the project.
   `fitness` are now separate fields, which makes the 0.2.1 fitness bug - where one key
   held both and the aggregate overwrote the samples - impossible to express.
 - `map_labels()` raises `TypeError` for a non-list/tuple mapping instead of asserting, so
-  the check survives `python -O`.
+  the check survives `python -O`. `run_oracle()` likewise raises `TypeError` rather than
+  asserting when a routing threshold is missing from the registry, and the grid solver was
+  restructured so it no longer needs a type-narrowing assertion at all. No `assert`
+  statements remain in `src/`.
 
 ### Added
 
@@ -38,6 +41,13 @@ same as in 0.2.3. This release is about the shape of the project.
 - `.pre-commit-config.yaml` running ruff, ruff-format, mypy and file-hygiene hooks.
 - Ruff and mypy configuration in `pyproject.toml`.
 - A `docs/` directory with a placeholder `index.md`.
+- Docstrings on every module, class and function in `src/`, in the Google style already
+  used by `Thresher`, documenting arguments, return values and the exceptions raised.
+  They record behaviour that is not evident from the signatures - that `run_parallel`
+  evaluates the scores themselves as thresholds while `run` evaluates the midpoints
+  between them, that grid search always spans `[0, 1]` regardless of the input range,
+  that the genetic solver returns the population mean rather than its fittest agent, and
+  that an unrecognised `algorithm_params` key is silently ignored.
 - A `pre-commit` CI job. Pull requests are now gated on both it and the `test` matrix.
 - `examples/sample_data.py`, replacing the loader that used to live in the test package.
 

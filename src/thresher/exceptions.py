@@ -1,3 +1,9 @@
+"""Message templates for the errors this package raises.
+
+Kept as format strings in one place so the wording stays consistent, and so tests can
+assert against the same text the user sees.
+"""
+
 NOT_IMPLEMENTED_ERROR = 'The "scores" attribute is not an Iterable! Please provide a list-like object'
 UNKNOWN_ALGORITHM = "Unknown algorithm. Run get_supported_algorithms() to get a list of available algorithms."
 

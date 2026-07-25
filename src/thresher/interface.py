@@ -1,3 +1,5 @@
+"""The user-facing interface: the `Thresher` class."""
+
 from collections.abc import Iterable, Mapping
 from typing import Any
 
@@ -8,9 +10,24 @@ from thresher.utils import map_labels
 
 
 class ThresherBase:
+    """Internal plumbing behind `Thresher`.
+
+    Split out so the public class holds only the documented API. Instances carry their
+    configuration in `options`, which `Thresher.__init__` populates.
+    """
+
     options: dict[str, Any]
 
     def _run_oracle(self, data_traits: Mapping[str, Any]) -> algorithm.Algorithm:
+        """Resolve which algorithm to use for this call.
+
+        Args:
+            data_traits: measurements of the input, passed to the oracle when the
+                algorithm option is left at its default.
+
+        Returns:
+            The algorithm the oracle selected, or the one explicitly configured.
+        """
         if self.options["algorithm"] == algorithm.DEFAULT:
             if self.options["verbose"]:
                 print("Running heuristics on choosing a proper algorithm")
@@ -30,6 +47,16 @@ class ThresherBase:
         scores: list[float],
         actual_classes: list[int],
     ) -> float:
+        """Hand the work to the dispatcher, applying this instance's options.
+
+        Args:
+            chosen_algorithm: the algorithm to run.
+            scores: the values being split.
+            actual_classes: the matching classes, already normalized to -1 and 1.
+
+        Returns:
+            The threshold chosen by the algorithm.
+        """
         return run_computations(
             chosen_algorithm,
             scores,
@@ -42,6 +69,17 @@ class ThresherBase:
 
 
 class Thresher(ThresherBase):
+    """Find the threshold that best separates two classes of scores.
+
+    Example:
+        >>> t = Thresher()
+        >>> t.optimize_threshold([0.1, 0.3, 0.4, 0.7], [-1, -1, 1, 1])
+        0.35
+
+    An instance is reusable: the options are fixed at construction (or through
+    `set_algorithm`), and `optimize_threshold` may be called repeatedly.
+    """
+
     def __init__(self, **kwargs: Any) -> None:
         """Create a new Thresher object, an interface to the Thresher evaluator.
 
@@ -70,15 +108,33 @@ class Thresher(ThresherBase):
         self.options["algorithm"] = algorithm.retrieve_by_alias(self.options["algorithm"])
 
     def get_current_algorithm(self) -> dict[str, Any]:
-        """Get the algorithm this instance is currently set to use."""
+        """Get the algorithm this instance is currently set to use.
+
+        Returns:
+            A dict with `name`, the algorithm's short id, and `object`, the `Algorithm`
+            itself. Note this reports what was configured: with the default `'auto'` the
+            name is `'auto'`, not whatever the oracle will go on to choose per call.
+        """
         current_algorithm: algorithm.Algorithm = self.options["algorithm"]
         return {"name": current_algorithm.id, "object": current_algorithm}
 
     def get_current_options(self) -> dict[str, Any]:
+        """Get this instance's configuration.
+
+        Returns:
+            The live options dict, not a copy - mutating it changes the instance.
+        """
         return self.options
 
     def set_algorithm(self, algorithm_name: str) -> "Thresher":
         """Select the algorithm to use, by id or by one of its synonyms.
+
+        Args:
+            algorithm_name: an algorithm id such as `'grid'`, or a synonym such as
+                `'sim'` or `'linear'`. Case-insensitive.
+
+        Returns:
+            This same instance, so calls can be chained.
 
         Raises:
             ValueError: if the name matches no known algorithm. This previously printed a
@@ -90,7 +146,15 @@ class Thresher(ThresherBase):
 
     @staticmethod
     def get_supported_algorithms(as_dict: bool = False) -> list[str] | dict[str, str]:
-        """Get the algorithms this build supports, as ids or as id -> full name."""
+        """Get the algorithms this build supports.
+
+        Args:
+            as_dict: return a mapping of id to human-readable name instead of a list.
+
+        Returns:
+            A list of algorithm ids, or a dict of id to full name when `as_dict` is set.
+            Includes `'auto'`, which is the oracle rather than an algorithm as such.
+        """
         if as_dict:
             return {k: v.full_name for k, v in algorithm.available_algorithms.items()}
         return list(algorithm.available_algorithms.keys())

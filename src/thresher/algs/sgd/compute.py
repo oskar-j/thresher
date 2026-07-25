@@ -1,3 +1,11 @@
+"""A naive 2-dimensional stochastic gradient descent over the error curve.
+
+The curve is the ratio of mis-classifications as a function of the threshold, and the walk
+follows it downhill. It is the cheapest solver on large inputs - each step scores only a
+random subsample - which is why the oracle selects it above 50,000 rows. It is also the
+least accurate, and can settle on a local optimum.
+"""
+
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
@@ -24,6 +32,33 @@ def sgd_solver(
     lower_bound: float,
     upper_bound: float,
 ) -> float:
+    """Walk the error curve downhill from a starting point, and return where it settles.
+
+    Each step moves by the current gradient, then rescales that gradient by the relative
+    gain the move produced. The walk is clamped to `[lower_bound, upper_bound]` and each
+    step is capped at half that range: without either guard the walk escapes the data,
+    where the error curve is flat, and the stopping rule then reports convergence on what
+    is really a divergence.
+
+    Args:
+        eval_func: scores a candidate threshold. Called as
+            `eval_func(threshold, previous_eval)` and returns
+            `(mis_classification_ratio, gain)`, where gain is the improvement over
+            `previous_eval` - positive when the move helped.
+        starting_point: threshold to start from, normally the mean of the scores.
+        gradient: initial step size and direction.
+        verbose: print the state of every iteration.
+        num_of_iters: maximum number of steps before giving up and returning anyway.
+        stop_thresh: stop once the absolute gain falls below this.
+        alpha: per-step decay applied to the gradient, damping the walk as it proceeds.
+        lower_bound: lowest threshold the walk may reach, normally `min(scores)`.
+        upper_bound: highest threshold the walk may reach, normally `max(scores)`.
+
+    Returns:
+        The threshold the walk settled on: the first point whose sample was classified
+        perfectly, or the point where the gain fell below `stop_thresh`, or wherever the
+        walk had reached when `num_of_iters` ran out.
+    """
     previous_eval_point = starting_point
     previous_eval = 0.0
 
@@ -103,9 +138,39 @@ def run(
     progress_bar: bool,
     alg_options: Mapping[str, Any],
 ) -> float:
+    """Find a threshold by walking down the error curve from the mean of the scores.
+
+    Args:
+        scores: the values being split.
+        actual_classes: the matching ground-truth classes, as -1 and 1.
+        verbose: print the state of every iteration.
+        progress_bar: accepted for signature compatibility with the other solvers; this
+            one reports through `verbose` only and never draws a bar.
+        alg_options: recognised keys, each falling back to its module-level default:
+            `num_of_iters` (200) caps the number of steps, `stop_thresh` (0.001) is the
+            improvement below which the walk stops, and `alpha` (0.01) damps the
+            gradient on each step.
+
+    Returns:
+        The threshold the walk settled on, always within `[min(scores), max(scores)]`.
+        This is the least accurate of the solvers - expect it near the optimum rather
+        than on it.
+    """
+
     def evaluate_threshold(
         threshold: float, previous_eval: float, random_factor: float = 0.05
     ) -> tuple[float, float]:
+        """Score a threshold against a random subsample, and report the improvement.
+
+        Args:
+            threshold: the candidate to evaluate.
+            previous_eval: the previous mis-classification ratio, to measure against.
+            random_factor: fraction of the data to sample.
+
+        Returns:
+            A `(mis_classification_ratio, gain)` pair, where gain is positive when this
+            threshold improved on `previous_eval`.
+        """
         if verbose:
             print(f"Currently evaluating threshold: {threshold}")
 

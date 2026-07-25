@@ -1,3 +1,10 @@
+"""Algorithm selection and dispatch.
+
+Two responsibilities sit here: `run_oracle` picks an algorithm from the shape of the data,
+and `run_computations` routes to the chosen implementation. This is the only module that
+imports the individual solvers.
+"""
+
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -19,17 +26,30 @@ STOCHASTIC_GRID_SEARCH_ALGORITHM = algorithm.available_algorithms["sgrid"]
 def run_oracle(data_traits: Mapping[str, Any]) -> algorithm.Algorithm:
     """Pick an algorithm from the traits of the input data.
 
-    The bounds come from each algorithm's 'data_vol_thresh', so changing those values in
-    'algorithm.py' changes routing here.
+    The bounds come from each algorithm's `data_vol_thresh`, so changing those values in
+    `algorithm.py` changes the routing here. The reasoning behind the current bounds is in
+    `examples/performance_test/ThresherPerformanceTest.ipynb`.
+
+    Args:
+        data_traits: measurements of the input. Only `data_length`, the number of scores,
+            is consulted today.
+
+    Returns:
+        Linear search at 1,000 rows or fewer, where an exact search is affordable; grid
+        search up to 50,000; stochastic gradient descent above that, where only a
+        subsample-based solver stays cheap.
+
+    Raises:
+        TypeError: if either routing threshold is unset in the registry, which would make
+            the comparisons below meaningless.
     """
     data_volume = data_traits["data_length"]
 
-    # some the 'ThresherPerformanceTest.ipynb' notebook for some thought process behind this
-    # an algorithm of recommendation for big datasets is currently 'sgd'
-
     linear_threshold = LINEAR_ALGORITHM.data_vol_thresh
     grid_threshold = GRID_SEARCH_ALGORITHM.data_vol_thresh
-    assert linear_threshold is not None and grid_threshold is not None
+    if linear_threshold is None or grid_threshold is None:
+        # A plain check rather than an assert, so it survives `python -O`.
+        raise TypeError("The 'ls' and 'grid' algorithms must both define a data_vol_thresh.")
 
     if data_volume <= linear_threshold:
         return LINEAR_ALGORITHM
@@ -47,6 +67,28 @@ def run_computations(
     allow_parallel: bool,
     alg_options: Mapping[str, Any],
 ) -> float:
+    """Validate the labels, then run the chosen algorithm.
+
+    Args:
+        chosen_algorithm: the algorithm to run, as an `Algorithm` from the registry.
+        scores: the values being split.
+        actual_classes: the matching ground-truth classes. Must already be normalized to
+            -1 and 1; `Thresher.optimize_threshold` does that before calling here.
+        verbose: print progress information.
+        progress_bar: draw a progress bar on stdout, where the solver supports one.
+        allow_parallel: permit multiprocessing. Only linear search acts on this, and only
+            when `alg_options` also carries an `n_jobs` other than 1.
+        alg_options: the user's `algorithm_params`. Each solver reads the keys it knows
+            and silently ignores the rest.
+
+    Returns:
+        The threshold chosen by the algorithm.
+
+    Raises:
+        ValueError: if the labels are empty, single-class, or outside (-1, 1).
+        NotImplementedError: if `chosen_algorithm` has no dispatch branch here - which is
+            what happens when an algorithm is added to the registry but not wired up.
+    """
     validate_actual_classes(actual_classes)
 
     if verbose:

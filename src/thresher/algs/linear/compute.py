@@ -1,3 +1,10 @@
+"""Linear search: evaluate every candidate threshold exactly.
+
+The most accurate solver, and the reference the others are measured against, but it costs
+O(n^2) - each of the n-1 candidate thresholds is scored against all n samples. The oracle
+picks it only for inputs of 1,000 rows or fewer.
+"""
+
 import multiprocessing as mp
 from collections.abc import Iterator, Sequence
 from functools import partial
@@ -8,6 +15,21 @@ from thresher.utils import pairwise, print_progress_bar
 def process_batch(
     scores: Sequence[float], actual_classes: Sequence[int], data_point: float
 ) -> tuple[float, float]:
+    """Score one candidate threshold against the whole dataset.
+
+    Defined at module level rather than as a closure because it is the function handed to
+    `multiprocessing.Pool.map`, and workers have to be able to pickle it.
+
+    Args:
+        scores: the values being split.
+        actual_classes: the matching ground-truth classes, as -1 and 1.
+        data_point: the candidate threshold to evaluate.
+
+    Returns:
+        A `(threshold, accuracy)` pair, where accuracy is the fraction of samples the
+        threshold classifies correctly. The threshold is passed back out so the caller can
+        identify results arriving from workers out of order.
+    """
     count_correct, count_incorrect = 0, 0
 
     for score, actual in zip(scores, actual_classes, strict=False):
@@ -23,6 +45,22 @@ def process_batch(
 
 
 def run_parallel(scores: Sequence[float], actual_classes: Sequence[int], verbose: bool, n_jobs: int) -> float:
+    """Run the linear search across several processes.
+
+    Selected by `run_computations` when `allow_parallel` is set and `n_jobs != 1`. Note
+    that this evaluates the scores themselves as thresholds, whereas the single-process
+    `run` evaluates the midpoints between adjacent scores, so the two can return slightly
+    different - equally valid - answers.
+
+    Args:
+        scores: the values being split.
+        actual_classes: the matching ground-truth classes, as -1 and 1.
+        verbose: print progress information.
+        n_jobs: number of worker processes, or -1 for every available processor bar one.
+
+    Returns:
+        The threshold with the highest accuracy.
+    """
     batch_size = len(scores)
     number_of_processors = mp.cpu_count()
 
@@ -44,6 +82,11 @@ def run_parallel(scores: Sequence[float], actual_classes: Sequence[int], verbose
         )
 
     def iterate_through_scores() -> Iterator[float]:
+        """Feed the scores to the pool one at a time, without copying the sequence.
+
+        Yields:
+            Each score in turn, as a candidate threshold for a worker to evaluate.
+        """
         yield from scores
 
     mp_func = partial(process_batch, scores, actual_classes)
@@ -54,6 +97,24 @@ def run_parallel(scores: Sequence[float], actual_classes: Sequence[int], verbose
 
 
 def run(scores: Sequence[float], actual_classes: Sequence[int], verbose: bool, progress_bar: bool) -> float:
+    """Evaluate the midpoint between every pair of adjacent scores, exactly.
+
+    Unlike the other solvers this one takes no `alg_options`; its only parameter, `n_jobs`,
+    selects `run_parallel` instead.
+
+    Args:
+        scores: the values being split.
+        actual_classes: the matching ground-truth classes, as -1 and 1.
+        verbose: print progress information.
+        progress_bar: draw a progress bar on stdout.
+
+    Returns:
+        The midpoint threshold with the highest accuracy. Where several tie, the first one
+        found wins.
+
+    Raises:
+        ValueError: if fewer than two scores were given, leaving no midpoint to evaluate.
+    """
     best_threshold: float | None = None
     best_accuracy: float = -1.0
 
