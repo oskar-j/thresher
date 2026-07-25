@@ -1,7 +1,18 @@
 import random
+from collections.abc import Sequence
 
 
-def stochastic_process(evaluated, scores, actual_classes, random_factor, miss_class=True):
+def stochastic_process(
+    evaluated: float,
+    scores: Sequence[float],
+    actual_classes: Sequence[int],
+    random_factor: float,
+    miss_class: bool = True,
+) -> float:
+    """Evaluate a candidate threshold against a random subsample of the data.
+
+    Returns the ratio of mis-classified samples by default, so lower is fitter.
+    """
     population_size = len(scores)
 
     # int() alone floors to 0 for small inputs (e.g. the 'gen' default of 0.02 does so
@@ -21,5 +32,4 @@ def stochastic_process(evaluated, scores, actual_classes, random_factor, miss_cl
 
     if miss_class:
         return number_of_incorrect / (number_of_incorrect + number_of_correct)  # ratio of mis-class
-    else:
-        return number_of_correct / (number_of_incorrect + number_of_correct)
+    return number_of_correct / (number_of_incorrect + number_of_correct)

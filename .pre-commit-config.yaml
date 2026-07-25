@@ -1,0 +1,46 @@
+# Run against everything with:  uv run pre-commit run --all-files
+# Install the git hook with:    uv run pre-commit install
+#
+# CI runs the same hooks on every pull request, so a clean local run means a green check.
+
+default_language_version:
+  python: python3
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=200]
+        # the performance-test archive is deliberately large and already committed
+        exclude: ^examples/performance_test/
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: debug-statements
+      # Notebooks are committed research artifacts. Rewriting whitespace inside their
+      # JSON edits cell content - and in markdown cells two trailing spaces are a
+      # meaningful line break - so leave them untouched.
+      - id: end-of-file-fixer
+        exclude: \.ipynb$
+      - id: mixed-line-ending
+        exclude: \.ipynb$
+      - id: trailing-whitespace
+        exclude: \.ipynb$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.2
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.18.2
+    hooks:
+      - id: mypy
+        files: ^(src|tests)/
+        additional_dependencies:
+          - numpy
+          - pandas-stubs
+          - pytest

@@ -1,15 +1,29 @@
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any
+
 import numpy as np
+
 from thresher.algs.common.stochastic import stochastic_process
 from thresher.utils import get_or_default
-
 
 num_of_iters_default = 200
 stop_thresh_default = 0.001
 alpha_default = 0.01
 
+EvalFunc = Callable[[float, float], tuple[float, float]]
 
-def sgd_solver(eval_func, starting_point, gradient, verbose, num_of_iters, stop_thresh, alpha,
-               lower_bound, upper_bound):
+
+def sgd_solver(
+    eval_func: EvalFunc,
+    starting_point: float,
+    gradient: float,
+    verbose: bool,
+    num_of_iters: int,
+    stop_thresh: float,
+    alpha: float,
+    lower_bound: float,
+    upper_bound: float,
+) -> float:
     previous_eval_point = starting_point
     previous_eval = 0.0
 
@@ -18,10 +32,9 @@ def sgd_solver(eval_func, starting_point, gradient, verbose, num_of_iters, stop_
     evaluation, gain = first_run[0], -first_run[1]
 
     if verbose:
-        print(f'SGD initial run (from point {starting_point}). Evaluation: {evaluation} and gain: {gain}')
+        print(f"SGD initial run (from point {starting_point}). Evaluation: {evaluation} and gain: {gain}")
 
     for iter_no in range(num_of_iters):
-
         previous_eval = evaluation
         previous_gain = gain
 
@@ -31,11 +44,17 @@ def sgd_solver(eval_func, starting_point, gradient, verbose, num_of_iters, stop_
         # of the iteration, so it is what we return.
         if previous_eval == 0.0:
             if verbose:
-                print(f'SGD iteration {iter_no}. Previous evaluation is 0.0 (nothing mis-classified) - stopping.')
+                print(
+                    f"SGD iteration {iter_no}. Previous evaluation is 0.0 "
+                    f"(nothing mis-classified) - stopping."
+                )
             return previous_eval_point
 
         if verbose:
-            print(f'SGD iteration {iter_no}. Previous evaluation: {previous_eval} for X:{previous_eval_point} and previous gain: {previous_gain}')
+            print(
+                f"SGD iteration {iter_no}. Previous evaluation: {previous_eval} "
+                f"for X:{previous_eval_point} and previous gain: {previous_gain}"
+            )
 
         # Keep the walk inside the range the scores actually span. A threshold outside it
         # puts every sample in one class, which is never a meaningful answer, and leaves
@@ -44,12 +63,12 @@ def sgd_solver(eval_func, starting_point, gradient, verbose, num_of_iters, stop_
         new_point = min(max(previous_eval_point + gradient, lower_bound), upper_bound)
 
         if verbose:
-            print(f'SGD iteration {iter_no}. New point set to: {new_point} because gradient: {gradient}')
+            print(f"SGD iteration {iter_no}. New point set to: {new_point} because gradient: {gradient}")
 
         evaluation, gain = eval_func(new_point, previous_eval)
 
         if verbose:
-            print(f'SGD iteration {iter_no}. Evaluation: {evaluation} and gain: {gain}')
+            print(f"SGD iteration {iter_no}. Evaluation: {evaluation} and gain: {gain}")
 
         previous_eval_point = new_point
 
@@ -68,7 +87,7 @@ def sgd_solver(eval_func, starting_point, gradient, verbose, num_of_iters, stop_
             gradient = max_step if gradient > 0 else -max_step
 
         if verbose:
-            print(f'SGD iteration {iter_no}. New gradient set to: {gradient}')
+            print(f"SGD iteration {iter_no}. New gradient set to: {gradient}")
 
         if abs(gain) < stop_thresh:
             return previous_eval_point
@@ -77,29 +96,42 @@ def sgd_solver(eval_func, starting_point, gradient, verbose, num_of_iters, stop_
     return previous_eval_point
 
 
-def run(scores, actual_classes, verbose, progress_bar, alg_options) -> float:
-
-    def evaluate_threshold(threshold, previous_eval, random_factor=0.05):
+def run(
+    scores: Sequence[float],
+    actual_classes: Sequence[int],
+    verbose: bool,
+    progress_bar: bool,
+    alg_options: Mapping[str, Any],
+) -> float:
+    def evaluate_threshold(
+        threshold: float, previous_eval: float, random_factor: float = 0.05
+    ) -> tuple[float, float]:
         if verbose:
-            print(f'Currently evaluating threshold: {threshold}')
+            print(f"Currently evaluating threshold: {threshold}")
 
         new_eval = stochastic_process(threshold, scores, actual_classes, random_factor)
         gain = previous_eval - new_eval
 
         return new_eval, gain
 
-    starting_point = np.mean(scores)
+    starting_point = float(np.mean(scores))
     if verbose:
-        print(f'Starting point set to: {starting_point}')
+        print(f"Starting point set to: {starting_point}")
 
     starting_gradient = 0.05
 
-    num_of_iters = get_or_default(alg_options, 'num_of_iters', num_of_iters_default)
-    stop_thresh = get_or_default(alg_options, 'stop_thresh', stop_thresh_default)
-    alpha = get_or_default(alg_options, 'alpha', alpha_default)
+    num_of_iters: int = get_or_default(alg_options, "num_of_iters", num_of_iters_default)
+    stop_thresh: float = get_or_default(alg_options, "stop_thresh", stop_thresh_default)
+    alpha: float = get_or_default(alg_options, "alpha", alpha_default)
 
-    result = sgd_solver(evaluate_threshold, starting_point, starting_gradient, verbose,
-                        num_of_iters=num_of_iters, stop_thresh=stop_thresh, alpha=alpha,
-                        lower_bound=min(scores), upper_bound=max(scores))
-
-    return result
+    return sgd_solver(
+        evaluate_threshold,
+        starting_point,
+        starting_gradient,
+        verbose,
+        num_of_iters=num_of_iters,
+        stop_thresh=stop_thresh,
+        alpha=alpha,
+        lower_bound=min(scores),
+        upper_bound=max(scores),
+    )
