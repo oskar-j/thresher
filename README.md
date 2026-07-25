@@ -1,6 +1,13 @@
 # Thresher - THRESHold EvaluatoR for Python
 
-![eye illusion old vs young woman face](https://www.shared.com/content/images/2018/09/InkedUntitled-design--5-_LI_GH_content_1150px.jpg) 
+[![PyPI version](https://img.shields.io/pypi/v/thresher-py.svg)](https://pypi.org/project/thresher-py/)
+[![Build](https://img.shields.io/github/actions/workflow/status/oskar-j/thresher/ci.yml?branch=main&label=build)](https://github.com/oskar-j/thresher/actions/workflows/ci.yml)
+[![Downloads](https://img.shields.io/pepy/dt/thresher-py)](https://pepy.tech/project/thresher-py)
+[![Stars](https://img.shields.io/github/stars/oskar-j/thresher)](https://github.com/oskar-j/thresher/stargazers)
+
+![eye illusion old vs young woman face](https://raw.githubusercontent.com/oskar-j/thresher/main/assets/optical-illusion.png)
+
+<sub>"My Wife and My Mother-in-Law" by W. E. Hill (1915), public domain, via [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:My_Wife_and_My_Mother-In-Law_(Hill).svg).</sub>
 
 _That's either a young girl's head, or an old woman face - it all depends on what the brain chooses to see._
 

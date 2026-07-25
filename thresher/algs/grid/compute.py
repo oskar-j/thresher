@@ -24,7 +24,10 @@ def run(scores, actual_classes, verbose, progress_bar, alg_options, stochastic=F
         print(f'Evaluating {batch_size} solutions. Please wait for results.')
 
     def get_random_projection(_scores, _actual_classes, _stoch_ratio):
-        return random.sample(list(zip(_scores, _actual_classes)), int(_stoch_ratio * len(_scores)))
+        # int() alone floors to 0 for small inputs (the default ratio of 0.05 does so
+        # below 20 rows), which yields an empty projection and a division by zero below.
+        _sample_size = min(max(1, int(_stoch_ratio * len(_scores))), len(_scores))
+        return random.sample(list(zip(_scores, _actual_classes)), _sample_size)
 
     if stochastic and (not reshuffle):
         one_time_projection = get_random_projection(scores, actual_classes, stoch_ratio)

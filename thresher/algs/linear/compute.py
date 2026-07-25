@@ -25,16 +25,23 @@ def run_parallel(scores, actual_classes, verbose, n_jobs) -> float:
     if (n_jobs < -1) or (n_jobs > number_of_processors):
         print(f'Improper value for n_jobs. It must be either -1, or at most, the number of available processors')
 
+    # Resolve n_jobs=-1 to a real process count first, and derive the chunk size from
+    # that. Dividing the batch by n_jobs directly makes the chunk size negative when
+    # n_jobs is -1, which makes pool.map return Nones.
+    number_of_processes = max(1, number_of_processors - 1 if n_jobs == -1 else n_jobs)
+    chunk_size = max(1, batch_size // number_of_processes)
+
     if verbose:
-        print(f'Doing linear search with {batch_size} iterations, running in parallel {n_jobs} jobs.')
+        print(f'Doing linear search with {batch_size} iterations, '
+              f'running in parallel over {number_of_processes} processes.')
 
     def iterate_through_scores():
         for score in scores:
             yield score
 
-    pool = mp.Pool(processes=number_of_processors-1 if n_jobs == -1 else n_jobs)
     mp_func = partial(process_batch, scores, actual_classes)
-    results = pool.map(func=mp_func, iterable=iterate_through_scores(), chunksize=int(batch_size/n_jobs))
+    with mp.Pool(processes=number_of_processes) as pool:
+        results = pool.map(func=mp_func, iterable=iterate_through_scores(), chunksize=chunk_size)
 
     return next(i[0] for i in sorted(results, key=lambda x: x[1], reverse=True))
 

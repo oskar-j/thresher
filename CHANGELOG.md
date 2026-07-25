@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-07-24
+
+### Fixed
+
+- `sgd` no longer walks outside the range of the scores it was given, and converges much
+  closer to the optimum. Three things compounded: the gradient's sign was flipped a second
+  time whenever a move made the error worse, cancelling the correction that would have
+  reversed the walk; the step size was unbounded, so a large relative gain could fling the
+  point across the whole range; and once outside the data the error curve is flat, so the
+  gain hit exactly 0 and the stopping rule reported convergence on a divergence. The walk
+  is now clamped to `[min(scores), max(scores)]`, the double sign flip is gone, and the
+  step is capped at half the data range. On separable data, mean error against linear
+  search falls from 4.0790 to 0.0321 at 5,000 rows and from 0.8883 to 0.0077 at 2,000;
+  on noisy data it roughly halves at every size tested.
+- `sgd` no longer raises `ZeroDivisionError` when a stochastic evaluation mis-classifies
+  nothing. The gradient update divided by that evaluation; it now stops and returns the
+  point instead, since a zero mis-classification ratio cannot be improved on. This was
+  reachable on cleanly separable data at most data volumes, and mattered most because the
+  oracle selects `sgd` for inputs above 50,000 rows.
+- The stochastic solvers no longer raise `ZeroDivisionError` on small inputs. Sample sizes
+  were computed as `int(ratio * N)`, which floors to 0 — breaking `gen` below 50 rows and
+  `sgrid` below 20. Sample sizes are now clamped to at least 1 and at most the input size.
+- `get_current_algorithm()` no longer raises `TypeError`. It used `with` on an `Algorithm`
+  namedtuple, so it could never have worked.
+- `n_jobs=-1` for linear search no longer raises `TypeError`. The documented "use all
+  processors except one" behaviour produced a negative chunk size, making `pool.map`
+  return `None` entries. The chunk size is now derived from the resolved process count.
+- The multiprocessing pool used by linear search is now closed, resolving a
+  `ResourceWarning`.
+
+### Added
+
+- `ThresherCrashRegressionTest` and `ThresherResultRangeTest`, covering each of the above.
+  These paths — explicitly selected algorithms, small inputs, and separable data — had no
+  coverage previously. The range test asserts every algorithm returns a threshold within
+  the span of its input scores.
+- Badges in `README.md` for the released version, build status, downloads and stars.
+- The README illustration is now vendored at `assets/optical-illusion.png` instead of being
+  hotlinked from a third-party site, so it cannot break or change underneath the project.
+  It is W. E. Hill's "My Wife and My Mother-in-Law" (1915), public domain.
+
 ## [0.2.1] - 2026-07-24
 
 ### Fixed
@@ -87,7 +128,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/oskar-j/thresher/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/oskar-j/thresher/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/oskar-j/thresher/compare/v_01_2...v0.2.0
 [0.1.2]: https://github.com/oskar-j/thresher/compare/v_01_1...v_01_2

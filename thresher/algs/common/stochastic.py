@@ -4,7 +4,11 @@ import random
 def stochastic_process(evaluated, scores, actual_classes, random_factor, miss_class=True):
     population_size = len(scores)
 
-    sample = random.sample(range(population_size), int(random_factor * population_size))
+    # int() alone floors to 0 for small inputs (e.g. the 'gen' default of 0.02 does so
+    # below 50 rows), which yields an empty sample and a division by zero below.
+    sample_size = min(max(1, int(random_factor * population_size)), population_size)
+
+    sample = random.sample(range(population_size), sample_size)
     number_of_correct, number_of_incorrect = 0, 0
     for idx in sample:
         element = scores[idx]
