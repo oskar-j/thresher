@@ -64,6 +64,47 @@ def test_sgd_converges_near_the_optimum(separable: DatasetFactory, size: int) ->
     assert abs(result - reference) < 0.15
 
 
+def _error_rate(threshold: float, scores: list[float], actual_classes: list[int]) -> float:
+    """Fraction of samples the threshold gets wrong, measured on the full dataset."""
+    wrong = sum(
+        1
+        for score, actual in zip(scores, actual_classes, strict=True)
+        if (1 if score > threshold else -1) != actual
+    )
+    return wrong / len(scores)
+
+
+@pytest.mark.parametrize("boundary", [0.7, 0.85])
+def test_sgd_reaches_an_optimum_far_from_the_mean(skewed: DatasetFactory, boundary: float) -> None:
+    """The walk has to travel from the mean of the scores to the real boundary.
+
+    Before 0.3.1 it could not: the step size was scaled by the relative gain, so it
+    collapsed as soon as progress slowed and the walk froze part-way. With the boundary
+    at 0.85 it returned around 0.56, mis-classifying roughly 29% of samples while
+    reporting convergence. These datasets are perfectly separable, so a correct answer
+    mis-classifies nothing at all.
+    """
+    scores, actual_classes = skewed(8000, boundary, seed=int(boundary * 100))
+
+    result = thresher.Thresher(algorithm="sgd").optimize_threshold(scores, actual_classes)
+
+    assert _error_rate(result, scores, actual_classes) < 0.10
+
+
+def test_sgd_returns_the_best_point_it_visited(separable: DatasetFactory) -> None:
+    """Not merely the point it happened to stop on.
+
+    The solver keeps walking through unproductive steps, so its final position is often
+    worse than one it already passed through.
+    """
+    scores, actual_classes = separable(5000, seed=7)
+    reference = thresher.Thresher(algorithm="ls").optimize_threshold(scores, actual_classes)
+
+    result = thresher.Thresher(algorithm="sgd").optimize_threshold(scores, actual_classes)
+
+    assert abs(result - reference) < 0.10
+
+
 def test_get_current_algorithm() -> None:
     # Used 'with' on an Algorithm namedtuple, so it raised TypeError unconditionally.
     current = thresher.Thresher(algorithm="grid").get_current_algorithm()

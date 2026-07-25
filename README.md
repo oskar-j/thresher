@@ -5,13 +5,28 @@
 [![Downloads](https://img.shields.io/pepy/dt/thresher-py)](https://pepy.tech/project/thresher-py)
 [![Stars](https://img.shields.io/github/stars/oskar-j/thresher)](https://github.com/oskar-j/thresher/stargazers)
 
-![eye illusion old vs young woman face](https://raw.githubusercontent.com/oskar-j/thresher/main/docs/assets/optical-illusion.png)
+> ### Your model gives you probabilities. Where you cut them is a decision — stop leaving it at 0.5.
 
-<sub>"My Wife and My Mother-in-Law" by W. E. Hill (1915), public domain, via [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:My_Wife_and_My_Mother-In-Law_(Hill).svg).</sub>
+A classifier that outputs `predict_proba` hands you a number between 0 and 1. Turning that
+into an actual yes-or-no answer needs a cut-off, and almost every pipeline uses 0.5 —
+because it is the default, not because anyone measured it.
 
-_That's either a young girl's head, or an old woman face - it all depends on what the brain chooses to see._
+The cut-off that actually maximizes accuracy depends on your data: how far the two classes
+overlap, how imbalanced they are, and how well your model is calibrated. It is rarely 0.5.
+When one class is rare it can be nowhere near it, and the gap between the default and the
+right answer is the gap between a model that looks fine on paper and one that is useful.
 
-_Choose your cut-off point wise!_
+**Thresher measures it.** Give it your scores and the ground truth, and it returns the
+threshold that classifies the highest fraction of your samples correctly:
+
+```python
+import thresher
+
+thresher.Thresher().optimize_threshold(scores, actual_classes)
+```
+
+That is the whole interface. Everything else in this README is about tuning what happens
+underneath — which of the five search algorithms runs, and how hard it looks.
 
 ## Project description
 
@@ -55,13 +70,21 @@ enables multiprocessing, while the default value of `1` disables multiprocessing
 
 This algorithm uses a naive implementation of the popular algorithm 'Stochastic Gradient Descent', which tries to converge over a function - in our case, it
 is an error curve representing ratio of miss-classifies for a threshold. Using a gradient, algorithm follows the curve to find the optimal value, that is,
-a threshold producing the smaller number of miss-classifies. The disadvantage of this algorithm is it's questionable robustness - it may happen
-that it converges to a local optimum instead of a global one.
+a threshold producing the smaller number of miss-classifies.
+
+Each step scores only a random subsample, which is what makes it cheap enough for the
+largest inputs - and also what makes it the least precise algorithm here. It walks from the
+mean of your scores and keeps the best point it visits. It is least reliable when one class
+is rare, because then a subsample carries little information about where the boundary lies;
+prefer grid search where you can afford it.
 
 List of parameters to customize:
 * `num_of_iters` (default: 200) - number of iterations during which algorithm tries to converge
-* `stop_thresh` (default: 0.001) - minimal value of improvement, below which algorithm stops
-* `alpha` (default: 0.01)
+* `stop_thresh` (default: 0.001) - improvement below which a step counts as making no progress
+* `stop_patience` (default: 3) - how many such steps in a row end the walk. Every evaluation
+reads a different random subsample, so a single small improvement is as likely to be noise as
+real convergence; raise this if the result looks like it stopped short
+* `alpha` (default: 0.01) - how quickly the step size decays as the walk proceeds
 
 ### Evolutionary algorithm
 

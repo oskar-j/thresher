@@ -26,4 +26,4 @@ installation, the available algorithms and their parameters, and
 
 ## Layout
 
-- `docs/assets/` — images referenced from the README and from these pages.
+- `docs/assets/` — images and other media referenced from these pages.

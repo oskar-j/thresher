@@ -49,6 +49,23 @@ def separable() -> DatasetFactory:
 
 
 @pytest.fixture
+def skewed() -> DatasetFactory:
+    """Build a dataset whose optimal threshold sits far from the mean score.
+
+    The classes are imbalanced, so the boundary is nowhere near the middle. This is the
+    case that exposed the stalling `sgd` walk in 0.3.0: it starts at the mean of the
+    scores and has to travel to reach the answer.
+    """
+
+    def _make(n: int, boundary: float, seed: int = 0) -> Dataset:
+        random.seed(seed)
+        scores = sorted(random.random() for _ in range(n))
+        return scores, [1 if score > boundary else -1 for score in scores]
+
+    return _make
+
+
+@pytest.fixture
 def tiny_dataset() -> Dataset:
     """The smallest input the README documents."""
     return [0.1, 0.3, 0.4, 0.7], [-1, -1, 1, 1]
