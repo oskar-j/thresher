@@ -16,41 +16,51 @@ Dependencies are managed with [uv](https://docs.astral.sh/uv/) via `pyproject.to
 uv sync --group dev
 ```
 
-`openpyxl` lives in the `dev` group and is mandatory for the tests: pandas needs it to read the `.xlsx` fixtures (`xlrd` 2.x cannot read `.xlsx` at all). Without the dev group, every `ThresherMediumTest` fails with ``ImportError: `Import openpyxl` failed``.
+`openpyxl` lives in the `dev` group and is mandatory for the tests: pandas needs it to read the `.xlsx` fixtures (`xlrd` 2.x cannot read `.xlsx` at all). Without the dev group, every test touching the medium fixture fails with ``ImportError: `Import openpyxl` failed``.
 
 ### Tests
 
-Tests **must be run from `thresher/tests/`**:
+pytest, runnable from anywhere in the repo (0.3.0 moved the fixtures to paths resolved relative to `tests/conftest.py`; before that the suite only worked from inside the old `thresher/tests/`):
 
 ```bash
-cd thresher/tests && uv run python -m unittest test
+uv run pytest                                   # 65 tests
+uv run pytest tests/test_validation.py -v       # one module
+uv run pytest -k "sgd and separable"            # by expression
+uv run --isolated --python 3.14 --group dev pytest   # a specific interpreter
 ```
 
-The cwd constraint is real, not a preference: `test.py:24` calls `get_sample_data(path='./')`, which reads `./positives.xlsx`. Running from the repo root gives 6 × `FileNotFoundError: './positives.xlsx'`.
+Several solvers are randomized internally, so returned thresholds vary between runs and the assertions check a band rather than an exact value. Outcomes are nonetheless stable: if a stochastic test starts failing intermittently, suspect a fitness/selection regression rather than a too-tight assertion.
 
-Expected result: `Ran 13 tests ... OK`. A `ResourceWarning: unclosed running multiprocessing pool` from `test_data_case_parallel` is benign.
-
-Single test:
+### Lint, format and types
 
 ```bash
-cd thresher/tests && uv run python -m unittest test.ThresherVerySmallTest.test_options
+uv run pre-commit run --all-files    # everything CI runs
+uv run ruff check . --fix
+uv run ruff format .
+uv run mypy                          # strict, over src/ and tests/
 ```
 
-Against a specific interpreter (3.10–3.14 are supported and verified):
-
-```bash
-cd thresher/tests && uv run --isolated --python 3.14 --group dev python -m unittest test
-```
-
-All 13 tests are deterministic in outcome as of 0.2.1. Several solvers are randomized internally, so exact returned thresholds vary between runs; the assertions check a band rather than an exact value. If a stochastic test starts failing intermittently, suspect a fitness/selection regression rather than a too-tight assertion.
+`[tool.mypy]` deliberately sets no `python_version`. Pinning it to 3.10 makes mypy fail while parsing numpy's bundled stubs, which use 3.12+ `type` statements. The CI matrix is what actually proves 3.10 compatibility.
 
 ### Examples
 
-`examples/sample.py` calls `get_sample_data()` with its default `path='./thresher/tests/'`, so it runs from the **repo root** — the opposite cwd from the tests:
+Run from anywhere; they resolve their data relative to the source file:
 
 ```bash
-python examples/sample.py
+uv run python examples/sample.py
 ```
+
+## Layout
+
+```
+src/thresher/     the package (src layout)
+  algs/           one sub-package per algorithm + shared helpers in algs/common
+tests/            pytest suite; conftest.py holds fixtures, data in tests/data
+docs/             documentation, images in docs/assets
+examples/         runnable samples
+```
+
+The `src/` layout matters here: tests import the *installed* package, so a packaging mistake (a module left out of the wheel, a missing `py.typed`) fails the suite instead of being masked by the repo root sitting on `sys.path`.
 
 ## Architecture
 
@@ -62,7 +72,7 @@ Three layers, each in its own file; a call flows strictly downward:
 
 ### Algorithm registry (`algorithm.py`)
 
-`available_algorithms` is a dict of `Algorithm` namedtuples (`id`, `full_name`, `synonyms`, `data_vol_thresh`). It drives three things at once:
+`available_algorithms` is a dict of `Algorithm` values — a `typing.NamedTuple` with `id`, `full_name`, `synonyms` and `data_vol_thresh`. It drives three things at once:
 
 - **Lookup by alias** — `retrieve_by_alias()` checks the dict key first, then falls back to a linear scan of `synonyms`. This is why `algorithm='sim'`, `'genetic'`, and `'gen'` all work.
 - **Oracle selection** — `data_vol_thresh` is the selection ladder, not documentation. `run_oracle()` reads `ls.data_vol_thresh` (1000) and `grid.data_vol_thresh` (50000) to route: `≤1000 → linear`, `≤50000 → grid`, else `sgd`. Changing a threshold changes routing behavior.
@@ -70,11 +80,11 @@ Three layers, each in its own file; a call flows strictly downward:
 
 ### Label contract
 
-Internally everything is `-1` / `1`. `Thresher.optimize_threshold` runs `utils.map_labels()` when a `labels` option is passed (e.g. `labels=(0,1)`), and `run_computations()` opens with `assert set(actual_classes) == {-1, 1}`. Solvers may assume this and hardcode `1 if score > threshold else -1`. If you add a code path that reaches a solver without going through `optimize_threshold`, normalize the labels yourself or you will trip the assert.
+Internally everything is `-1` / `1`. `Thresher.optimize_threshold` runs `utils.map_labels()` when a `labels` option is passed (e.g. `labels=(0,1)`), and `run_computations()` opens with `utils.validate_actual_classes()`, which raises `ValueError` for empty, single-class or out-of-range labels. Solvers may assume the contract and hardcode `1 if score > threshold else -1`. If you add a code path reaching a solver without going through `optimize_threshold`, normalize the labels yourself. Note this is a plain check rather than an `assert` precisely so it survives `python -O`.
 
 ### Algorithm parameters
 
-User-supplied `algorithm_params` reach solvers as an untyped `alg_options` dict. Every solver reads it with `utils.get_or_default(alg_options, 'key', key_default)`, where `key_default` is a module-level constant at the top of that `compute.py`. Unknown keys are silently ignored — there is no validation, so a typo'd param name fails quietly with the default value.
+User-supplied `algorithm_params` reach solvers as an `alg_options` mapping whose values are `Any`. Every solver reads it with `utils.get_or_default(alg_options, 'key', key_default)`, where `key_default` is a module-level constant at the top of that `compute.py`. Unknown keys are silently ignored — there is no validation, so a typo'd param name fails quietly with the default value.
 
 ### Shared solver helpers (`algs/common/`)
 
@@ -94,9 +104,9 @@ All solvers expose `run(scores, actual_classes, verbose, progress_bar, alg_optio
 Four edits, all required:
 
 1. Add an entry to `available_algorithms` in `algorithm.py` (set `data_vol_thresh=None` unless the oracle should route on it).
-2. Create `thresher/algs/<name>/compute.py` with a `run(...)` matching the convention above, plus `__init__.py`.
+2. Create `src/thresher/algs/<name>/compute.py` with a `run(...)` matching the convention above, plus `__init__.py`. Annotate it — `mypy --strict` covers `src/` and will reject untyped defs.
 3. In `oracle.py`: import the compute module, add a module-level constant, and add a branch to `run_computations()`.
-4. Update `test_options` in `thresher/tests/test.py` — it asserts `len(get_supported_algorithms()) == 6`, so it fails on any registry change.
+4. Nothing in `tests/` hardcodes the algorithm count — `test_supported_algorithms` compares against `available_algorithms` itself — but `tests/test_regressions.py::ALL_ALGORITHMS` and the parametrised lists in `tests/test_optimization.py` should gain the new id so it is actually exercised.
 
 Also update the algorithm's section and parameter list in `README.md`; the README is the only parameter documentation.
 
@@ -118,16 +128,16 @@ Tags from 0.2.0 onward use the standard `v0.2.0` form. The three historical tags
 
 ## Known issues
 
-The crashes and the `sgd` out-of-range results were fixed in 0.2.2; the unhelpful error paths were fixed in 0.2.3. All are covered by `ThresherCrashRegressionTest`, `ThresherResultRangeTest` and `ThresherInputValidationTest`. What remains below is unfixed and reproduced against 0.2.3.
+The crashes and the `sgd` out-of-range results were fixed in 0.2.2; the unhelpful error paths were fixed in 0.2.3. All are covered by `tests/test_regressions.py` and `tests/test_validation.py`. What remains below is unfixed and reproduced against 0.3.0.
 
-Coverage is still thin in the same way that let those defects ship: outside those three regression classes, the suite exercises one fixture and a few tiny inputs, and uses the oracle-selected algorithm for everything except the five explicit `ThresherMediumTest` cases. Paths reached only by passing `algorithm=` explicitly remain lightly tested.
+Coverage is better than it was, but still rests on one real-world fixture plus synthetic separable data. The regression modules parametrise across every algorithm and several sizes; `tests/test_optimization.py` is the only place real data is used.
 
 ### Accuracy
 
-- **`sgd` remains the least accurate solver**, even after the 0.2.2 fixes. On separable data its mean error against linear search is ~0.03 at 5,000 rows, against ~0.008 for the other algorithms. It is a naive implementation over a stochastic sample and can still settle short of the optimum; `ThresherResultRangeTest` only asserts it lands within 0.15. Worth remembering that the oracle selects it for every input above 50,000 rows, so it is the solver doing the most consequential work.
+- **`sgd` remains the least accurate solver**, even after the 0.2.2 fixes. On separable data its mean error against linear search is ~0.03 at 5,000 rows, against ~0.008 for the other algorithms. It is a naive implementation over a stochastic sample and can still settle short of the optimum; `test_sgd_converges_near_the_optimum` only asserts it lands within 0.15. Worth remembering that the oracle selects it for every input above 50,000 rows, so it is the solver doing the most consequential work.
 
 - **Mismatched input lengths are accepted silently.** `optimize_threshold()` never checks that `scores` and `actual_classes` are the same length, and the solvers pair them with `zip()`, which stops at the shorter one. Passing 6 scores and 4 labels returns `0.25` rather than complaining — the surplus scores are simply ignored. A length check in `validate_actual_classes()`'s caller would close it, but note that would newly raise for anyone currently relying on the truncation, so it is a behaviour change rather than a pure fix.
 
 ### Rough edges
 
-- `examples/sample.py` and the test suite require *opposite* working directories (repo root vs. `thresher/tests/`), because `sample_data.py` takes its path as a plain string default. A `pathlib`-based path anchored to the module would fix both.
+- Nothing outstanding here: the opposite-working-directory trap between the examples and the suite was removed in 0.3.0, when both moved to paths resolved relative to their own source file.

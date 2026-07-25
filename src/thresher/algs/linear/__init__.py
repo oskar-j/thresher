@@ -1,0 +1,1 @@
+"""Exhaustive linear search."""

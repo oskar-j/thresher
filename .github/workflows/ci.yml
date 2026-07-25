@@ -7,6 +7,30 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Runs exactly the hooks in .pre-commit-config.yaml (ruff, ruff-format, mypy and the
+  # file hygiene checks), so a clean local `pre-commit run --all-files` means a green job.
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the project and its dev dependencies
+        run: uv sync --group dev
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Run pre-commit
+        run: uv run pre-commit run --all-files --show-diff-on-failure
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -25,8 +49,5 @@ jobs:
       - name: Install the project and its dev dependencies
         run: uv sync --group dev
 
-      # The suite loads its .xlsx fixtures via a relative './' path, so it only
-      # passes when run from inside thresher/tests.
       - name: Run tests
-        working-directory: thresher/tests
-        run: uv run python -m unittest test -v
+        run: uv run pytest -v

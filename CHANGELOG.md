@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-25
+
+No behavioural change to the public API: `Thresher`, its options and its results are the
+same as in 0.2.3. This release is about the shape of the project.
+
+### Changed
+
+- Adopted the `src/` layout: the package now lives in `src/thresher/`. Tests therefore run
+  against the installed package rather than whatever happens to be on `sys.path`, so a
+  packaging mistake fails the suite instead of hiding behind the working directory.
+- Moved the tests out of the distribution to a top-level `tests/`. They were previously
+  shipped inside the package as `thresher.tests` and excluded from the wheel by hand.
+- Fixtures are now located relative to the test file. The suite ran only from inside
+  `thresher/tests`, while `examples/sample.py` required the repository root - the two were
+  mutually exclusive. Both now run from anywhere.
+- Converted the suite from `unittest` to `pytest`, using fixtures and `conftest.py`.
+  Parametrisation expands the same coverage from 26 cases to 65.
+- Moved the README illustration to `docs/assets/`.
+- The evolutionary algorithm's agents are a dataclass rather than a dict. `samples` and
+  `fitness` are now separate fields, which makes the 0.2.1 fitness bug - where one key
+  held both and the aggregate overwrote the samples - impossible to express.
+- `map_labels()` raises `TypeError` for a non-list/tuple mapping instead of asserting, so
+  the check survives `python -O`. `run_oracle()` likewise raises `TypeError` rather than
+  asserting when a routing threshold is missing from the registry, and the grid solver was
+  restructured so it no longer needs a type-narrowing assertion at all. No `assert`
+  statements remain in `src/`.
+
+### Added
+
+- Type annotations throughout, checked by `mypy --strict`, plus a `py.typed` marker so the
+  annotations are visible to consumers of the published package.
+- `.pre-commit-config.yaml` running ruff, ruff-format, mypy and file-hygiene hooks.
+- Ruff and mypy configuration in `pyproject.toml`.
+- A `docs/` directory with a placeholder `index.md`.
+- Docstrings on every module, class and function in `src/`, in the Google style already
+  used by `Thresher`, documenting arguments, return values and the exceptions raised.
+  They record behaviour that is not evident from the signatures - that `run_parallel`
+  evaluates the scores themselves as thresholds while `run` evaluates the midpoints
+  between them, that grid search always spans `[0, 1]` regardless of the input range,
+  that the genetic solver returns the population mean rather than its fittest agent, and
+  that an unrecognised `algorithm_params` key is silently ignored.
+- A `pre-commit` CI job. Pull requests are now gated on both it and the `test` matrix.
+- `examples/sample_data.py`, replacing the loader that used to live in the test package.
+
+### Fixed
+
+- The examples now guard their entry point with `if __name__ == "__main__":`.
+  `examples/sample_parallel.py` asks for multiprocessing, and on platforms whose start
+  method is `spawn` - macOS and Windows - every worker re-imports the script. Without the
+  guard each worker re-ran the example and spawned workers of its own, so the example hung
+  instead of failing. It worked only on Linux, where the start method is `fork`.
+
 ## [0.2.3] - 2026-07-25
 
 ### Fixed
@@ -155,7 +207,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/oskar-j/thresher/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/oskar-j/thresher/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/oskar-j/thresher/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/oskar-j/thresher/compare/v0.2.0...v0.2.1

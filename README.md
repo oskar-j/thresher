@@ -5,7 +5,7 @@
 [![Downloads](https://img.shields.io/pepy/dt/thresher-py)](https://pepy.tech/project/thresher-py)
 [![Stars](https://img.shields.io/github/stars/oskar-j/thresher)](https://github.com/oskar-j/thresher/stargazers)
 
-![eye illusion old vs young woman face](https://raw.githubusercontent.com/oskar-j/thresher/main/assets/optical-illusion.png)
+![eye illusion old vs young woman face](https://raw.githubusercontent.com/oskar-j/thresher/main/docs/assets/optical-illusion.png)
 
 <sub>"My Wife and My Mother-in-Law" by W. E. Hill (1915), public domain, via [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:My_Wife_and_My_Mother-In-Law_(Hill).svg).</sub>
 
@@ -15,13 +15,13 @@ _Choose your cut-off point wise!_
 
 ## Project description
 
-A bare pandas implementation of a tool for finding the threshold which maximizes accuracy 
+A bare pandas implementation of a tool for finding the threshold which maximizes accuracy
 of `predict_proba` like-outputs (from e.g. `scikit-learn`), in regard to the provided ground truth (labels).
 
 _Note: you can jump directly to the sample usage [here](https://github.com/oskar-j/thresher#sample-usage)._
 
-Method interesting for the user is `optimize_threshold(scores, actual_classes)`, which is available 
-from the `Thresher` class. This method, for given _scores_ and _actual classes_, 
+Method interesting for the user is `optimize_threshold(scores, actual_classes)`, which is available
+from the `Thresher` class. This method, for given _scores_ and _actual classes_,
 returns a threshold that yields the _**highest fraction** of correctly classified_ samples.
 
 ```
@@ -29,11 +29,11 @@ optimize_threshold parameters:
   scores​:list
     The list of scores.
   actual_classes​:list
-    The list of ground truth (correct) classes. 
+    The list of ground truth (correct) classes.
     Classes are represented as -1 and 1.
 returns:
   threshold:​float
-    The threshold value that yields ​the highest fraction of correctly classified 
+    The threshold value that yields ​the highest fraction of correctly classified
     samples​. If multiple thresholds give the optimal fraction, return any threshold.
 ```
 
@@ -45,18 +45,18 @@ We implemented a meta-optimizer - an 'oracle' mechanism, which chooses a proper 
 
 ### Linear search
 
-This is the most basic, iterative approach. Recommended for smaller datasets. For every _threshold_ present in the input (in the _scores_ list), we evaluate it by calculating the exact accuracy of _split_ produced by such threshold. Then, return the threshold which produce the most accurate split. 
+This is the most basic, iterative approach. Recommended for smaller datasets. For every _threshold_ present in the input (in the _scores_ list), we evaluate it by calculating the exact accuracy of _split_ produced by such threshold. Then, return the threshold which produce the most accurate split.
 
 List of parameters to customize:
-* `n_jobs` (default: 1) - set to `-1` for using all available processors except one; any value of `2` or more 
+* `n_jobs` (default: 1) - set to `-1` for using all available processors except one; any value of `2` or more
 enables multiprocessing, while the default value of `1` disables multiprocessing
 
 ### 2-dim Stochastic Gradient Descent
 
 This algorithm uses a naive implementation of the popular algorithm 'Stochastic Gradient Descent', which tries to converge over a function - in our case, it
-is an error curve representing ratio of miss-classifies for a threshold. Using a gradient, algorithm follows the curve to find the optimal value, that is, 
+is an error curve representing ratio of miss-classifies for a threshold. Using a gradient, algorithm follows the curve to find the optimal value, that is,
 a threshold producing the smaller number of miss-classifies. The disadvantage of this algorithm is it's questionable robustness - it may happen
-that it converges to a local optimum instead of a global one. 
+that it converges to a local optimum instead of a global one.
 
 List of parameters to customize:
 * `num_of_iters` (default: 200) - number of iterations during which algorithm tries to converge
@@ -65,7 +65,7 @@ List of parameters to customize:
 
 ### Evolutionary algorithm
 
-This is a simulation approach which uses an evolutionary algorithm. It works by simulating multiple generations of a "population" of candidate solutions. During every iteration of a single generation, algorithm stochasticly evaluates the candidate solution. After the end of a single generation, we remove the from the population least fit agents (solutions), and do the _crossover_ between the left solitions to produce new "offspring" candidate solutions. Moreover, they may mutate to provide additional random chance. 
+This is a simulation approach which uses an evolutionary algorithm. It works by simulating multiple generations of a "population" of candidate solutions. During every iteration of a single generation, algorithm stochasticly evaluates the candidate solution. After the end of a single generation, we remove the from the population least fit agents (solutions), and do the _crossover_ between the left solitions to produce new "offspring" candidate solutions. Moreover, they may mutate to provide additional random chance.
 
 List of parameters to customize:
 * `population_size` (default: 30) - number of agents in the simulation
@@ -80,7 +80,7 @@ List of parameters to customize:
 ### Grid search
 
 Added in version `0.1.2`. This algorithm works by generate a grid of possible solutions, with a granularity set
-by parameter named `no_of_decimal_places`. All candidate solutions are evaluated thoroughly 
+by parameter named `no_of_decimal_places`. All candidate solutions are evaluated thoroughly
 and the best one is chosen at the end.
 
 List of parameters to customize:
@@ -98,7 +98,7 @@ List of parameters to customize:
 
 ## How to setup?
 
-The process is rather straightforward, you just need to just whether to install 
+The process is rather straightforward, you just need to just whether to install
 from the sources (latest revision), or from the PyPI repository (stable release).
 
 ### Requirements
@@ -134,21 +134,42 @@ This project uses [uv](https://docs.astral.sh/uv/) for dependency management, wi
 uv sync --group dev
 ```
 
-Run the test suite (it loads its `.xlsx` fixtures through a relative path, so it must be
-run from inside `thresher/tests`):
+Run the test suite ([pytest](https://docs.pytest.org/), from anywhere in the repo):
 
 ```
-cd thresher/tests && uv run python -m unittest test
+uv run pytest
+```
+
+Lint, format and type-check with the same hooks CI runs:
+
+```
+uv run pre-commit run --all-files
+```
+
+Optionally install the git hook so those run on every commit:
+
+```
+uv run pre-commit install
+```
+
+### Project layout
+
+```
+src/thresher/     the package  (src layout, so tests run against the installed copy)
+  algs/           one sub-package per algorithm, plus shared helpers in algs/common
+tests/            pytest suite; fixtures in conftest.py, data in tests/data
+docs/             documentation, with images in docs/assets
+examples/         runnable usage samples
 ```
 
 ## Custom parameters
 
-It's possible to provide additional parameters in the `Thresher` constructor. 
+It's possible to provide additional parameters in the `Thresher` constructor.
 
 ```python
 Thresher(algorithm='auto',
          allow_parallel=True,
-         verbose=False, 
+         verbose=False,
          progress_bar=False,
          labels=(0,1))
 ```
@@ -156,18 +177,18 @@ Thresher(algorithm='auto',
 Here is a description of what does every particular parameter do:
 
 * **algorithm** (default value: `'auto'`) - allows to manually choose the algorithm from the list of available algorithms.
-Same effect can be achieved with running the method called `set_algorithm(algorithm_name)` on the `Thresher` instance. 
+Same effect can be achieved with running the method called `set_algorithm(algorithm_name)` on the `Thresher` instance.
 The default value is 'auto', which means that the tool uses an oracle mechanism to manually choose a proper algorithm.
 * **allow_parallel** (default value: `True`) - enables/disabled multiprocessing for algorithms
 * **verbose** (default value: `False`) - enables verbosity
 * **progress_bar** (default value: `False`) - shows a progress bar in the terminal (if supported by the algorithm)
-* **labels** - necessary if your labels are different from `(-1, 1)` - first item from the tuple/list is a negative label, 
+* **labels** - necessary if your labels are different from `(-1, 1)` - first item from the tuple/list is a negative label,
 and the second item is a positive label
 
 ### Control parameters for the algorithms
 
-Some of the above-mentioned algorithms allow to change their parameters. 
-They should be provided in a dictionary, inside the `algorithm_params` parameter. 
+Some of the above-mentioned algorithms allow to change their parameters.
+They should be provided in a dictionary, inside the `algorithm_params` parameter.
 If no such customs parameters are provided, default values apply.
 
 Examples:
