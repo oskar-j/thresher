@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `sgd` no longer walks outside the range of the scores it was given, and converges much
+  closer to the optimum. Three things compounded: the gradient's sign was flipped a second
+  time whenever a move made the error worse, cancelling the correction that would have
+  reversed the walk; the step size was unbounded, so a large relative gain could fling the
+  point across the whole range; and once outside the data the error curve is flat, so the
+  gain hit exactly 0 and the stopping rule reported convergence on a divergence. The walk
+  is now clamped to `[min(scores), max(scores)]`, the double sign flip is gone, and the
+  step is capped at half the data range. On separable data, mean error against linear
+  search falls from 4.0790 to 0.0321 at 5,000 rows and from 0.8883 to 0.0077 at 2,000;
+  on noisy data it roughly halves at every size tested.
 - `sgd` no longer raises `ZeroDivisionError` when a stochastic evaluation mis-classifies
   nothing. The gradient update divided by that evaluation; it now stops and returns the
   point instead, since a zero mis-classification ratio cannot be improved on. This was
@@ -29,8 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `ThresherCrashRegressionTest`, covering each of the above. These paths — explicitly
-  selected algorithms, small inputs, and separable data — had no coverage previously.
+- `ThresherCrashRegressionTest` and `ThresherResultRangeTest`, covering each of the above.
+  These paths — explicitly selected algorithms, small inputs, and separable data — had no
+  coverage previously. The range test asserts every algorithm returns a threshold within
+  the span of its input scores.
+- Badges in `README.md` for the released version, build status, downloads and stars.
 
 ## [0.2.1] - 2026-07-24
 

@@ -1,3 +1,4 @@
+import random
 import unittest
 import thresher
 from thresher import algorithm
@@ -173,6 +174,40 @@ class ThresherCrashRegressionTest(unittest.TestCase):
         t = thresher.Thresher(algorithm='linear', algorithm_params={'n_jobs': -1})
         result = t.optimize_threshold(scores, actual_classes)
         self.assertTrue(0.0 <= result <= 1.0)
+
+
+class ThresherResultRangeTest(unittest.TestCase):
+    """A returned threshold must lie within the range of the scores it was given.
+
+    Anything outside it puts every sample in one class. 'sgd' used to walk out of that
+    range on cleanly separable data and return e.g. 1.8972 for a predict_proba cut-off,
+    which looks plausible enough to go unnoticed.
+    """
+
+    @staticmethod
+    def _separable(n, seed):
+        random.seed(seed)
+        scores = sorted(random.random() for _ in range(n))
+        return scores, [-1] * (n // 2) + [1] * (n - n // 2)
+
+    def test_result_within_score_range(self):
+        for alg in ('ls', 'sgd', 'gen', 'grid', 'sgrid'):
+            for n in (200, 2000, 5000):
+                with self.subTest(algorithm=alg, n=n):
+                    scores, actual_classes = self._separable(n, seed=n)
+                    result = thresher.Thresher(algorithm=alg).optimize_threshold(scores, actual_classes)
+                    self.assertGreaterEqual(result, min(scores))
+                    self.assertLessEqual(result, max(scores))
+
+    def test_sgd_converges_near_the_optimum(self):
+        # Guards the step-size cap: without it the walk overshoots, pins against a bound
+        # and reports convergence there, landing far from the true threshold.
+        for n in (2000, 5000):
+            with self.subTest(n=n):
+                scores, actual_classes = self._separable(n, seed=n)
+                reference = thresher.Thresher(algorithm='ls').optimize_threshold(scores, actual_classes)
+                result = thresher.Thresher(algorithm='sgd').optimize_threshold(scores, actual_classes)
+                self.assertLess(abs(result - reference), 0.15)
 
 
 if __name__ == "__main__":

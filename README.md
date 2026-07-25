@@ -1,6 +1,11 @@
 # Thresher - THRESHold EvaluatoR for Python
 
-![eye illusion old vs young woman face](https://www.shared.com/content/images/2018/09/InkedUntitled-design--5-_LI_GH_content_1150px.jpg) 
+[![PyPI version](https://img.shields.io/pypi/v/thresher-py.svg)](https://pypi.org/project/thresher-py/)
+[![Build](https://img.shields.io/github/actions/workflow/status/oskar-j/thresher/ci.yml?branch=main&label=build)](https://github.com/oskar-j/thresher/actions/workflows/ci.yml)
+[![Downloads](https://img.shields.io/pepy/dt/thresher-py)](https://pepy.tech/project/thresher-py)
+[![Stars](https://img.shields.io/github/stars/oskar-j/thresher)](https://github.com/oskar-j/thresher/stargazers)
+
+![eye illusion old vs young woman face](https://www.researchgate.net/profile/Kirk-Stamant-2/publication/233626368/figure/fig1/AS:300058999312388@1448551048203/The-optical-illusion-The-Young-Girl-Old-Woman.png) 
 
 _That's either a young girl's head, or an old woman face - it all depends on what the brain chooses to see._
 

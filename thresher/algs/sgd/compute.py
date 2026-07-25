@@ -8,7 +8,8 @@ stop_thresh_default = 0.001
 alpha_default = 0.01
 
 
-def sgd_solver(eval_func, starting_point, gradient, verbose, num_of_iters, stop_thresh, alpha):
+def sgd_solver(eval_func, starting_point, gradient, verbose, num_of_iters, stop_thresh, alpha,
+               lower_bound, upper_bound):
     previous_eval_point = starting_point
     previous_eval = 0.0
 
@@ -36,7 +37,11 @@ def sgd_solver(eval_func, starting_point, gradient, verbose, num_of_iters, stop_
         if verbose:
             print(f'SGD iteration {iter_no}. Previous evaluation: {previous_eval} for X:{previous_eval_point} and previous gain: {previous_gain}')
 
-        new_point = previous_eval_point + gradient
+        # Keep the walk inside the range the scores actually span. A threshold outside it
+        # puts every sample in one class, which is never a meaningful answer, and leaves
+        # the error curve flat - so the gain goes to exactly 0 and the stop_thresh check
+        # below reports convergence on what is really a divergence.
+        new_point = min(max(previous_eval_point + gradient, lower_bound), upper_bound)
 
         if verbose:
             print(f'SGD iteration {iter_no}. New point set to: {new_point} because gradient: {gradient}')
@@ -48,9 +53,19 @@ def sgd_solver(eval_func, starting_point, gradient, verbose, num_of_iters, stop_
 
         previous_eval_point = new_point
 
-        gradient = gradient * (gain/previous_eval) * (1.0 - alpha)
-        if gain < 0:
-            gradient *= -1.0
+        # The relative gain already carries the direction: a negative gain means the move
+        # made things worse, and the negative ratio flips the gradient to walk back. The
+        # sign was previously flipped a second time on gain < 0, which cancelled exactly
+        # that correction - so a bad move carried on in the same direction with a larger
+        # step each time, and the walk ran away from the data.
+        gradient = gradient * (gain / previous_eval) * (1.0 - alpha)
+
+        # The relative gain is unbounded, so a single step could otherwise be flung across
+        # the whole data range and pin the walk against a bound. Capping it at half the
+        # range keeps the steps proportionate to the data.
+        max_step = (upper_bound - lower_bound) / 2.0
+        if abs(gradient) > max_step:
+            gradient = max_step if gradient > 0 else -max_step
 
         if verbose:
             print(f'SGD iteration {iter_no}. New gradient set to: {gradient}')
@@ -84,6 +99,7 @@ def run(scores, actual_classes, verbose, progress_bar, alg_options) -> float:
     alpha = get_or_default(alg_options, 'alpha', alpha_default)
 
     result = sgd_solver(evaluate_threshold, starting_point, starting_gradient, verbose,
-                        num_of_iters=num_of_iters, stop_thresh=stop_thresh, alpha=alpha)
+                        num_of_iters=num_of_iters, stop_thresh=stop_thresh, alpha=alpha,
+                        lower_bound=min(scores), upper_bound=max(scores))
 
     return result

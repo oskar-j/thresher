@@ -118,13 +118,13 @@ Tags from 0.2.0 onward use the standard `v0.2.0` form. The three historical tags
 
 ## Known issues
 
-The crashes previously listed here were fixed in 0.2.2 and are now covered by `ThresherCrashRegressionTest`. What remains is unfixed and reproduced against 0.2.2.
+The crashes previously listed here, and the `sgd` out-of-range results, were fixed in 0.2.2 and are covered by `ThresherCrashRegressionTest` and `ThresherResultRangeTest`. What remains is unfixed and reproduced against 0.2.2.
 
-Coverage is still thin in the same way that let those crashes ship: outside that regression class, the suite exercises one fixture and a few tiny inputs, and uses the oracle-selected algorithm for everything except the five explicit `ThresherMediumTest` cases. Paths reached only by passing `algorithm=` explicitly remain lightly tested.
+Coverage is still thin in the same way that let those defects ship: outside those two regression classes, the suite exercises one fixture and a few tiny inputs, and uses the oracle-selected algorithm for everything except the five explicit `ThresherMediumTest` cases. Paths reached only by passing `algorithm=` explicitly remain lightly tested.
 
-### Silent wrong answers
+### Accuracy
 
-- **`sgd` can return a threshold outside `[0, 1]`.** Nothing clamps the walk to the valid probability range, so it can wander off and return e.g. `1.8972` for a `predict_proba` cut-off (still reproducible at N=2000 on separable data). Callers get a plausible-looking float that classifies every sample into one class. This is the most damaging issue left, and fixing it needs a decision rather than a patch: clamp the walk into `[0, 1]`, or let it diverge and fail loudly. Clamping silently is not obviously right, since divergence indicates the gradient step is misbehaving.
+- **`sgd` remains the least accurate solver**, even after the 0.2.2 fixes. On separable data its mean error against linear search is ~0.03 at 5,000 rows, against ~0.008 for the other algorithms. It is a naive implementation over a stochastic sample and can still settle short of the optimum; `ThresherResultRangeTest` only asserts it lands within 0.15. Worth remembering that the oracle selects it for every input above 50,000 rows, so it is the solver doing the most consequential work.
 
 ### Rough edges
 
