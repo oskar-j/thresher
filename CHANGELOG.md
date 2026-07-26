@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-25
+
+### Fixed
+
+- The `sgd` walk no longer stalls short of the optimum. Its step size was scaled by the
+  relative gain of each move, which compounded: as progress slowed the step shrank, which
+  slowed progress further, until a step so small that two consecutive subsamples scored
+  identically drove the gain to exactly `0.0` and the step to `0.0` with it. The walk then
+  froze wherever it stood, and the stopping rule reported that as convergence. The step now
+  follows a fixed decay schedule and takes only its *direction* from the gain.
+
+  The effect is largest where the optimum sits far from the mean of the scores, which is
+  where the walk begins. On separable data with the boundary at 0.85, `sgd` returned about
+  0.56 and mis-classified 29% of samples while reporting success. Mean error against the
+  true optimum, over 8 seeds:
+
+  | data | before | after |
+  |---|---|---|
+  | boundary at 0.70 | 0.1343 | 0.0014 |
+  | boundary at 0.85 | 0.2910 | 0.0015 |
+  | boundary at 0.95 | 0.3929 | 0.0074 |
+  | separable | 0.0305 | 0.0037 |
+  | noisy, 15% overlap | 0.1762 | 0.1676 |
+
+- `sgd` now returns the best threshold it visited rather than whichever one it stopped on.
+  The walk continues past unproductive steps, so its final position was often worse than a
+  point it had already passed through.
+- Dividing by the previous evaluation is gone with the old step rule, so the guard added in
+  0.2.2 against a zero-valued divisor is no longer needed. It used to return immediately
+  when a subsample happened to be classified perfectly, abandoning the search on the
+  strength of one lucky sample.
+
+### Added
+
+- `stop_patience` (default 3) for `sgd`: how many consecutive unproductive steps end the
+  walk. Every evaluation reads a different random subsample, so a single small gain is as
+  likely to be noise as convergence, and stopping on the first one left the walk short.
+  Worst-case error over 20 seeds on a heavily skewed 2,000-row input fell from 0.452 to
+  0.302, and mean error from 0.287 to 0.039.
+
+- `examples/benchmark.py`, which measures every algorithm against the exact optimum and
+  prints the comparison table in the README. The reference optimum is computed by sweeping
+  the sorted scores, independently of the algorithms being measured, and is checked against
+  brute force.
+
+### Changed
+
+- Rewrote the README opening. The optical-illusion image and its caption are replaced with
+  an explanation of what the project is for - that a `predict_proba` cut-off is a decision
+  most pipelines leave at 0.5 by default rather than by measurement.
+- Added a table of contents to the README, and an "Algorithm scores" section comparing the
+  five algorithms on accuracy, runtime and complexity. `Implemented algorithms` is now a
+  top-level heading, so the sections nest properly under it.
+
 ## [0.3.0] - 2026-07-25
 
 No behavioural change to the public API: `Thresher`, its options and its results are the
@@ -207,7 +261,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/oskar-j/thresher/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/oskar-j/thresher/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/oskar-j/thresher/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/oskar-j/thresher/compare/v0.2.1...v0.2.2

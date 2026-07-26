@@ -5,13 +5,50 @@
 [![Downloads](https://img.shields.io/pepy/dt/thresher-py)](https://pepy.tech/project/thresher-py)
 [![Stars](https://img.shields.io/github/stars/oskar-j/thresher)](https://github.com/oskar-j/thresher/stargazers)
 
-![eye illusion old vs young woman face](https://raw.githubusercontent.com/oskar-j/thresher/main/docs/assets/optical-illusion.png)
+> ### Your model gives you probabilities. Where you cut them is a decision — stop leaving it at 0.5.
 
-<sub>"My Wife and My Mother-in-Law" by W. E. Hill (1915), public domain, via [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:My_Wife_and_My_Mother-In-Law_(Hill).svg).</sub>
+A classifier that outputs `predict_proba` hands you a number between 0 and 1. Turning that
+into an actual yes-or-no answer needs a cut-off, and almost every pipeline uses 0.5 —
+because it is the default, not because anyone measured it.
 
-_That's either a young girl's head, or an old woman face - it all depends on what the brain chooses to see._
+The cut-off that actually maximizes accuracy depends on your data: how far the two classes
+overlap, how imbalanced they are, and how well your model is calibrated. It is rarely 0.5.
+When one class is rare it can be nowhere near it, and the gap between the default and the
+right answer is the gap between a model that looks fine on paper and one that is useful.
 
-_Choose your cut-off point wise!_
+**Thresher measures it.** Give it your scores and the ground truth, and it returns the
+threshold that classifies the highest fraction of your samples correctly:
+
+```python
+import thresher
+
+thresher.Thresher().optimize_threshold(scores, actual_classes)
+```
+
+That is the whole interface. Everything else in this README is about tuning what happens
+underneath — which of the five search algorithms runs, and how hard it looks.
+
+## Table of contents
+
+- [Project description](#project-description)
+  - [An oracle mechanism](#an-oracle-mechanism)
+- [Implemented algorithms](#implemented-algorithms)
+  - [Linear search](#linear-search)
+  - [2-dim Stochastic Gradient Descent](#2-dim-stochastic-gradient-descent)
+  - [Evolutionary algorithm](#evolutionary-algorithm)
+  - [Grid search](#grid-search)
+  - [Stochastic Grid search](#stochastic-grid-search)
+- [Algorithm scores](#algorithm-scores)
+- [How to setup?](#how-to-setup)
+  - [Requirements](#requirements)
+  - [Installation](#installation)
+  - [Development setup](#development-setup)
+  - [Project layout](#project-layout)
+- [Custom parameters](#custom-parameters)
+  - [Control parameters for the algorithms](#control-parameters-for-the-algorithms)
+- [Sample usage](#sample-usage)
+- [Performance tests](#performance-tests)
+- [Future work](#future-work)
 
 ## Project description
 
@@ -41,7 +78,7 @@ returns:
 
 We implemented a meta-optimizer - an 'oracle' mechanism, which chooses a proper algorithm in regard to the provided data. This is the default behaviour, and can be controlled by changing the `algorithm` param of the `Thresher` constructor. See the source code of [oracle.py](https://github.com/oskar-j/thresher/blob/main/thresher/oracle.py) and [interface.py](https://github.com/oskar-j/thresher/blob/main/thresher/interface.py) for more details.
 
-### Implemented algorithms
+## Implemented algorithms
 
 ### Linear search
 
@@ -55,13 +92,21 @@ enables multiprocessing, while the default value of `1` disables multiprocessing
 
 This algorithm uses a naive implementation of the popular algorithm 'Stochastic Gradient Descent', which tries to converge over a function - in our case, it
 is an error curve representing ratio of miss-classifies for a threshold. Using a gradient, algorithm follows the curve to find the optimal value, that is,
-a threshold producing the smaller number of miss-classifies. The disadvantage of this algorithm is it's questionable robustness - it may happen
-that it converges to a local optimum instead of a global one.
+a threshold producing the smaller number of miss-classifies.
+
+Each step scores only a random subsample, which is what makes it cheap enough for the
+largest inputs - and also what makes it the least precise algorithm here. It walks from the
+mean of your scores and keeps the best point it visits. It is least reliable when one class
+is rare, because then a subsample carries little information about where the boundary lies;
+prefer grid search where you can afford it.
 
 List of parameters to customize:
 * `num_of_iters` (default: 200) - number of iterations during which algorithm tries to converge
-* `stop_thresh` (default: 0.001) - minimal value of improvement, below which algorithm stops
-* `alpha` (default: 0.01)
+* `stop_thresh` (default: 0.001) - improvement below which a step counts as making no progress
+* `stop_patience` (default: 3) - how many such steps in a row end the walk. Every evaluation
+reads a different random subsample, so a single small improvement is as likely to be noise as
+real convergence; raise this if the result looks like it stopped short
+* `alpha` (default: 0.01) - how quickly the step size decays as the walk proceeds
 
 ### Evolutionary algorithm
 
@@ -95,6 +140,59 @@ List of parameters to customize:
 * `no_of_decimal_places` (default: 2) - generate the grid by rounding the number to the given number of decimal places
 * `stoch_ratio` (default: 0.05) - percentage of data to evaluate fit of a candidate number in the grid
 * `reshuffle` (default: False) - set whether the random projection should be calculated every step, or not
+
+## Algorithm scores
+
+How the five compare on 2,000 rows, averaged over 5 seeds. Accuracy is relative to the
+**exact** optimum — the best accuracy any single threshold could reach on that dataset,
+computed independently by sweeping the sorted scores rather than by asking one of the
+algorithms under test. 100% therefore means "found a cut-off as good as the best one that
+exists", not merely "did well".
+
+| Algorithm | Separable | Overlapping | Imbalanced | Time | Complexity |
+|---|---|---|---|---|---|
+| `ls` | 100.00% | 100.00% | 100.00% | 252 ms | O(n²) |
+| `grid` | 99.82% | 99.98% | 100.00% | 18 ms | O(c·n) |
+| `sgrid` | 99.57% | 97.84% | 99.70% | 1 ms | O(c·r·n) |
+| `gen` | 99.62% | 98.23% | 88.64% | 110 ms | O(e·r·n) |
+| `sgd` | 99.54% | 97.01% | 88.37% | 8 ms | O(i·r·n) |
+
+Where _n_ is the number of scores, _c_ the grid candidates (`10**no_of_decimal_places + 1`,
+so 101 by default), _r_ the `stoch_ratio` sample fraction, _e_ the genetic evaluations
+(`population_size × number_of_generations × number_of_iterations`) and _i_ the sgd steps
+(at most `num_of_iters`).
+
+Only linear search grows with the *square* of the input, because it scores each of the
+n-1 candidate midpoints against all n samples. Every other algorithm takes its candidate
+count from its own parameters rather than from n, which is what keeps it linear — and what
+the measured timings show:
+
+| Algorithm | n=1,000 | n=4,000 | n=16,000 | growth per 4× |
+|---|---|---|---|---|
+| `ls` | 57 ms | 944 ms | 17,796 ms | ~16× |
+| `grid` | 9 ms | 38 ms | 161 ms | ~4× |
+| `sgrid` | <1 ms | 2 ms | 9 ms | ~4× |
+| `gen` | 60 ms | 198 ms | 855 ms | ~4× |
+| `sgd` | 5 ms | 18 ms | 67 ms | ~4× |
+
+Three things worth reading out of this:
+
+- **Linear search is exact**, and on small data it is cheap enough that nothing else is
+  worth using. By 16,000 rows it already costs 18 seconds, and it is quadratic, so it only
+  gets worse from there. That is why the oracle stops choosing it above 1,000 rows.
+- **Grid search is the sweet spot** — within 0.2% of exact on every dataset here, at a
+  fraction of the cost. `sgrid` gives up a little accuracy for another ~20× speedup.
+- **`gen` and `sgd` struggle when one class is rare.** Both read only a small random
+  subsample per evaluation, and the rarer the minority class, the less any subsample says
+  about where the boundary lies. Prefer grid search on imbalanced data if you can afford
+  it, or raise `stoch_ratio` for `gen`.
+
+Timings come from one laptop and are only meaningful relative to one another. Reproduce
+the whole table with:
+
+```
+uv run python examples/benchmark.py
+```
 
 ## How to setup?
 
@@ -224,6 +322,10 @@ See the [examples](https://github.com/oskar-j/thresher/tree/main/examples) direc
 
 A very basic performance test (with 10 repeats, on a real-world [anonymized data](https://github.com/oskar-j/thresher/blob/main/examples/performance_test/milion_samples.7z) consisting of `10^6` rows) can be found in the Notebook [located here](https://github.com/oskar-j/thresher/blob/main/examples/performance_test/TresherPerformanceTest.ipynb).
 Similar experiment, but with more iterations, was conducted in the file [TresherPerformanceTestExtended.ipynb](https://github.com/oskar-j/thresher/blob/main/examples/performance_test/TresherPerformanceTestExtended.ipynb) to test the oracle.
+
+For a head-to-head comparison of accuracy and runtime across all five algorithms, see
+[Algorithm scores](#algorithm-scores) above — that one is reproducible from
+`examples/benchmark.py` rather than recorded in a notebook.
 
 ## Future work
 
