@@ -18,6 +18,7 @@ num_of_iters_default = 200
 stop_thresh_default = 0.001
 stop_patience_default = 3
 alpha_default = 0.01
+stoch_ratio_default = 0.05
 
 EvalFunc = Callable[[float, float], tuple[float, float]]
 
@@ -160,25 +161,28 @@ def run(
         alg_options: recognised keys, each falling back to its module-level default:
             `num_of_iters` (200) caps the number of steps, `stop_thresh` (0.001) is the
             improvement below which a step counts as making no progress,
-            `stop_patience` (3) is how many such steps in a row end the walk, and
-            `alpha` (0.01) damps the step size on each iteration.
+            `stop_patience` (3) is how many such steps in a row end the walk,
+            `alpha` (0.01) damps the step size on each iteration, and `stoch_ratio`
+            (0.05) is the fraction of the data each step reads. Raising the last is the
+            lever against this algorithm's weak spot: when one class is rare, a small
+            subsample carries little information about where the boundary lies.
 
     Returns:
         The best threshold the walk visited, always within `[min(scores), max(scores)]`.
         This remains the least accurate solver - expect it near the optimum rather than
         on it, and least reliable when one class is rare, where the subsamples carry
-        little signal about where the boundary lies.
+        little signal about where the boundary lies. Raising `stoch_ratio` trades speed
+        for a stronger signal, and `exact` gives up the trade entirely.
     """
 
-    def evaluate_threshold(
-        threshold: float, previous_eval: float, random_factor: float = 0.05
-    ) -> tuple[float, float]:
+    stoch_ratio: float = get_or_default(alg_options, "stoch_ratio", stoch_ratio_default)
+
+    def evaluate_threshold(threshold: float, previous_eval: float) -> tuple[float, float]:
         """Score a threshold against a random subsample, and report the improvement.
 
         Args:
             threshold: the candidate to evaluate.
             previous_eval: the previous mis-classification ratio, to measure against.
-            random_factor: fraction of the data to sample.
 
         Returns:
             A `(mis_classification_ratio, gain)` pair, where gain is positive when this
@@ -187,7 +191,7 @@ def run(
         if verbose:
             print(f"Currently evaluating threshold: {threshold}")
 
-        new_eval = stochastic_process(threshold, scores, actual_classes, random_factor)
+        new_eval = stochastic_process(threshold, scores, actual_classes, stoch_ratio)
         gain = previous_eval - new_eval
 
         return new_eval, gain

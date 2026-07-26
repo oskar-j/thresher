@@ -16,7 +16,7 @@ from thresher.algs.linear import compute as linear_compute
 from thresher.algs.sgd import compute as sgd_compute
 from thresher.backends import Backend, LocalBackend
 from thresher.exceptions import UNKNOWN_ALGORITHM
-from thresher.utils import validate_actual_classes
+from thresher.utils import validate_actual_classes, validate_lengths
 
 EXACT_ALGORITHM = algorithm.available_algorithms["exact"]
 LINEAR_ALGORITHM = algorithm.available_algorithms["ls"]
@@ -82,10 +82,12 @@ def run_computations(
         The threshold chosen by the algorithm.
 
     Raises:
-        ValueError: if the labels are empty, single-class, or outside (-1, 1).
+        ValueError: if the labels are empty, single-class, outside (-1, 1), or a different
+            length from the scores.
         NotImplementedError: if `chosen_algorithm` has no dispatch branch here - which is
             what happens when an algorithm is added to the registry but not wired up.
     """
+    validate_lengths(scores, actual_classes)
     validate_actual_classes(actual_classes)
 
     if verbose:

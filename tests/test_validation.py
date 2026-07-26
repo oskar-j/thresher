@@ -88,3 +88,67 @@ def test_validation_survives_optimized_mode() -> None:
 
     assert completed.returncode != 0, "invalid input was accepted under -O"
     assert "ValueError" in completed.stderr
+
+
+class TestLengthMismatch:
+    """Every score needs the class it belongs to.
+
+    The solvers pair the two with `zip`, which stops at the shorter sequence, so before
+    0.4.4 a mismatch was absorbed in silence and the surplus simply discarded. Six scores
+    against four classes returned a threshold computed from four of them, with nothing in
+    the result to say so.
+    """
+
+    def test_more_scores_than_classes(self) -> None:
+        with pytest.raises(ValueError, match="same length"):
+            thresher.Thresher().optimize_threshold([0.1, 0.2, 0.3, 0.4, 0.9, 0.95], [-1, -1, 1, 1])
+
+    def test_more_classes_than_scores(self) -> None:
+        with pytest.raises(ValueError, match="same length"):
+            thresher.Thresher().optimize_threshold([0.1, 0.9], [-1, 1, 1, 1])
+
+    def test_the_message_names_both_counts(self) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            thresher.Thresher().optimize_threshold([0.1, 0.2, 0.3], [-1, 1])
+
+        message = str(excinfo.value)
+        assert "3 scores" in message
+        assert "2 entries" in message
+
+    @pytest.mark.parametrize("algorithm_name", ["exact", "ls", "grid", "sgrid", "gen", "sgd"])
+    def test_every_algorithm_rejects_it(self, algorithm_name: str) -> None:
+        # The check sits in run_computations, so no solver can be reached with ragged input.
+        with pytest.raises(ValueError, match="same length"):
+            thresher.Thresher(algorithm=algorithm_name).optimize_threshold([0.1, 0.2, 0.3, 0.9], [-1, 1])
+
+    def test_mismatch_is_caught_after_custom_labels_are_mapped(self) -> None:
+        with pytest.raises(ValueError, match="same length"):
+            thresher.Thresher(labels=(0, 1)).optimize_threshold([0.1, 0.2, 0.3], [0, 1])
+
+    def test_matching_lengths_are_unaffected(self) -> None:
+        assert thresher.Thresher().optimize_threshold([0.1, 0.3, 0.4, 0.7], [-1, -1, 1, 1])
+
+
+class TestMissingLabels:
+    """A blank cell in a CSV arrives as NaN, which is absent rather than mis-encoded."""
+
+    def test_missing_labels_are_named_as_missing(self) -> None:
+        with pytest.raises(ValueError, match="missing value"):
+            thresher.Thresher().optimize_threshold([0.1, 0.5, 0.9], [-1, float("nan"), 1])
+
+    def test_the_message_counts_them(self) -> None:
+        with pytest.raises(ValueError, match="2 missing value"):
+            thresher.Thresher().optimize_threshold([0.1, 0.5, 0.9, 0.95], [-1, float("nan"), float("nan"), 1])
+
+    def test_it_does_not_send_you_to_the_labels_option(self) -> None:
+        # That advice fits a differently-encoded class, not an absent one, and would send
+        # someone looking for a mapping that cannot exist.
+        with pytest.raises(ValueError) as excinfo:
+            thresher.Thresher().optimize_threshold([0.1, 0.9], [float("nan"), 1])
+
+        assert "--labels" not in str(excinfo.value)
+        assert "labels=" not in str(excinfo.value)
+
+    def test_real_labels_are_still_reported_as_unmapped(self) -> None:
+        with pytest.raises(ValueError, match="labels"):
+            thresher.Thresher().optimize_threshold([0.1, 0.9], [0, 1])

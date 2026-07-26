@@ -1,6 +1,6 @@
 [project]
 name = "thresher-py"
-version = "0.4.3"
+version = "0.4.4"
 description = "Find threshold for fine-tuning output from predict_proba"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -122,4 +122,11 @@ warn_unused_ignores = false
 
 [[tool.mypy.overrides]]
 module = ["openpyxl.*"]
+ignore_missing_imports = true
+
+# Ray is an optional extra and cannot be installed at all on macOS x86_64, so the type
+# checker has to cope with it being absent. The Ray backend imports it lazily and guards
+# the ImportError, which is the behaviour that matters.
+[[tool.mypy.overrides]]
+module = ["ray.*"]
 ignore_missing_imports = true
