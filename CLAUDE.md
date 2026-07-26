@@ -34,13 +34,16 @@ Several solvers are randomized internally, so returned thresholds vary between r
 ### Lint, format and types
 
 ```bash
-uv run pre-commit run --all-files    # everything CI runs
+make check                           # everything CI runs - prefer this
+uv run pre-commit run --all-files    # the same hooks, but see the warning below
 uv run ruff check . --fix
 uv run ruff format .
 uv run mypy                          # strict, over src/ and tests/
 ```
 
-**`--all-files` means all *tracked* files.** A new file that has not been `git add`ed yet is skipped in silence, so the run reports success while never looking at it. `git add` before trusting a green pre-commit run, or install the hook (`uv run pre-commit install`) so it happens on commit. CI checks out the committed tree and therefore does see the file, which is where the discrepancy surfaces.
+**`--all-files` means all *tracked* files.** A file that has not been `git add`ed yet is skipped in silence, so the run reports success while never having looked at it. CI checks out the committed tree, sees the file, and fails - which is where the discrepancy surfaces, after the push. This caught out two releases in a row before being fixed properly in 0.4.1.
+
+Use **`make check`**, which runs `git add --intent-to-add .` first so new files are visible to the hooks, then runs them. `make install` also installs the git hook, so commits are checked whatever you type. Reach for the bare `pre-commit` command only if you know every file you care about is already tracked.
 
 The mypy hook resolves its own environment from `additional_dependencies` in `.pre-commit-config.yaml`, independently of `pyproject.toml`. A new runtime dependency has to be added in both places: absent from the hook's list, an imported library's types vanish and every function touched by its decorators fails `strict` with "Untyped decorator". Locally `uv run mypy` will still pass, because that uses the project environment.
 

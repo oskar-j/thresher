@@ -4,6 +4,7 @@ The point of this algorithm is that it is *exact*, so the tests compare it again
 force search over every distinguishable threshold rather than against a tolerance.
 """
 
+import math
 import random
 from collections.abc import Callable
 from itertools import pairwise
@@ -25,16 +26,18 @@ def accuracy(threshold: float, scores: list[float], actual_classes: list[int]) -
     ) / len(scores)
 
 
-def best_in_range_accuracy(scores: list[float], actual_classes: list[int]) -> float:
-    """Brute force over every threshold within the span of the scores.
+def best_possible_accuracy(scores: list[float], actual_classes: list[int]) -> float:
+    """Brute force over every split a threshold can induce.
 
     Deliberately naive - it enumerates the midpoint between each pair of adjacent distinct
-    values, plus the maximum itself, and scores each from scratch. That is the definition
-    the sweep has to meet.
+    values and scores each from scratch, plus both edge splits: the maximum itself
+    (everything negative) and just below the minimum (everything positive). That is the
+    definition the sweep has to meet.
     """
     unique = sorted(set(scores))
     candidates = [(low + high) / 2 for low, high in pairwise(unique)]
     candidates.append(unique[-1])
+    candidates.append(math.nextafter(unique[0], -math.inf))
     return max(accuracy(t, scores, actual_classes) for t in candidates)
 
 
@@ -62,7 +65,7 @@ def test_matches_brute_force(awkward_dataset: Callable[[int], Dataset], seed: in
     result = thresher.Thresher(algorithm="exact").optimize_threshold(scores, actual_classes)
 
     assert accuracy(result, scores, actual_classes) == pytest.approx(
-        best_in_range_accuracy(scores, actual_classes)
+        best_possible_accuracy(scores, actual_classes)
     )
 
 
@@ -103,6 +106,33 @@ def test_handles_heavy_ties() -> None:
 
     assert accuracy(result, scores, actual_classes) == 1.0
     assert 0.1 <= result < 0.9
+
+
+def test_reaches_the_classify_everything_positive_split() -> None:
+    """The one split that needs a threshold below every score.
+
+    Score and class run contrary to each other here, so every threshold *inside* the data
+    does worse than simply calling everything positive. Before 0.4.1 that split was
+    unreachable and the sweep returned 0.15, getting 1 of 3 right where 2 of 3 was
+    available.
+    """
+    scores = [0.1, 0.2, 0.3]
+    actual_classes = [1, 1, -1]
+
+    result = thresher.Thresher(algorithm="exact").optimize_threshold(scores, actual_classes)
+
+    assert result < min(scores), "a below-minimum threshold is the only way to express this split"
+    assert result == math.nextafter(min(scores), -math.inf), "and it should be the closest one"
+    assert accuracy(result, scores, actual_classes) == pytest.approx(2 / 3)
+
+
+def test_prefers_a_threshold_inside_the_data_on_a_tie(separable: DatasetFactory) -> None:
+    """The edge split is taken only on a strict improvement, never to break a tie."""
+    scores, actual_classes = separable(400, seed=5)
+
+    result = thresher.Thresher(algorithm="exact").optimize_threshold(scores, actual_classes)
+
+    assert min(scores) <= result <= max(scores)
 
 
 def test_perfectly_separable_data(separable: DatasetFactory) -> None:

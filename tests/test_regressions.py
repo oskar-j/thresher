@@ -5,6 +5,7 @@ They exercise paths the rest of the suite does not reach: algorithms selected ex
 rather than by the oracle, small inputs, and cleanly separable data.
 """
 
+import math
 from collections.abc import Callable
 
 import pytest
@@ -44,13 +45,35 @@ def test_sgd_on_separable_data(separable: DatasetFactory, size: int) -> None:
 def test_result_stays_within_the_score_range(
     separable: DatasetFactory, algorithm_name: str, size: int
 ) -> None:
-    """A threshold outside the input range puts every sample in one class.
+    """A returned threshold must correspond to a split of the data it was given.
 
-    'sgd' used to walk out of that range on separable data and return e.g. 1.8972 for a
-    predict_proba cut-off - plausible enough to go unnoticed.
+    'sgd' used to walk clean out of the input range on separable data and return e.g.
+    1.8972 for a predict_proba cut-off - plausible enough to go unnoticed.
+
+    The lower bound is `nextafter(min, -inf)` rather than `min` because since 0.4.1 the
+    exact sweep can return exactly that value, which is the only way to express
+    "classify everything as positive". Nothing may sit any lower, and nothing at all may
+    exceed `max(scores)`.
     """
     scores, actual_classes = separable(size, seed=size)
     result = thresher.Thresher(algorithm=algorithm_name).optimize_threshold(scores, actual_classes)
+
+    assert math.nextafter(min(scores), -math.inf) <= result <= max(scores)
+
+
+@pytest.mark.parametrize("algorithm_name", [a for a in ALL_ALGORITHMS if a != "exact"])
+@pytest.mark.parametrize("size", [200, 2000])
+def test_approximate_algorithms_stay_strictly_inside_the_range(
+    separable: DatasetFactory, algorithm_name: str, size: int
+) -> None:
+    """Only the exact sweep has a reason to leave the span of the scores.
+
+    The others have no way to represent an edge split, so a result outside `[min, max]`
+    from any of them means the search has wandered, which is the 0.2.2 sgd bug.
+    """
+    scores, actual_classes = separable(size, seed=size)
+    result = thresher.Thresher(algorithm=algorithm_name).optimize_threshold(scores, actual_classes)
+
     assert min(scores) <= result <= max(scores)
 
 
