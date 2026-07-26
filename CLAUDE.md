@@ -97,7 +97,7 @@ Three layers, each in its own file; a call flows strictly downward:
 `available_algorithms` is a dict of `Algorithm` values — a `typing.NamedTuple` with `id`, `full_name`, `synonyms` and `data_vol_thresh`. It drives three things at once:
 
 - **Lookup by alias** — `retrieve_by_alias()` checks the dict key first, then falls back to a linear scan of `synonyms`. This is why `algorithm='sim'`, `'genetic'`, and `'gen'` all work.
-- **Oracle selection** — `data_vol_thresh` is the selection ladder, not documentation. `run_oracle()` reads `ls.data_vol_thresh` (1000) and `grid.data_vol_thresh` (50000) to route: `≤1000 → linear`, `≤50000 → grid`, else `sgd`. Changing a threshold changes routing behavior.
+- **Oracle selection** — as of 0.4.0 `run_oracle()` returns `exact` unconditionally, and `data_vol_thresh` is advisory only. The old ladder (`≤1000 → linear`, `≤50000 → grid`, else `sgd`) traded accuracy against size because the only exact algorithm was O(n²); `exact` is exact at every size *and* cheaper, so the trade-off is gone. Editing `data_vol_thresh` no longer changes any behaviour.
 - **The public algorithm list** — `get_supported_algorithms()` returns its keys.
 
 ### Label contract
@@ -113,6 +113,12 @@ User-supplied `algorithm_params` reach solvers as an `alg_options` mapping whose
 - `stochastic.py::stochastic_process` — evaluates a candidate threshold on a random subsample; the shared basis for the `sgd` and `genetic` solvers' speed on large data.
 - `meta_optimizer.py::calculate_range_mean` — per-class mean, used by `genetic` to seed its initial population range.
 - `tools.py::granularity_of_scores` — rounding generator.
+
+### Why `exact` supersedes the rest
+
+`algs/exact/compute.py` sorts once and sweeps with running class counts, so each candidate threshold costs O(1) instead of O(n) — O(n log n) overall against linear search's O(n²), and 1,358× faster at 16,000 rows. It is exact, so it has no parameters; there is no accuracy to trade for speed. The other four algorithms predate it and are kept selectable, but nothing should route to them by default.
+
+Two subtleties in that file worth not "simplifying" away. Runs of equal scores are stepped over whole, because a threshold cannot sit inside one — the tie case Fawcett raises for ROC curves. And the final candidate is `max(scores)` itself, which expresses "classify everything as negative"; linear search has no way to represent that, which is why `exact` is very occasionally *more* accurate rather than merely equal.
 
 ### Solver signature convention
 

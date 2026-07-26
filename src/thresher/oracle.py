@@ -9,6 +9,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from thresher import algorithm
+from thresher.algs.exact import compute as exact_compute
 from thresher.algs.genetic import compute as gen_compute
 from thresher.algs.grid import compute as grid_compute
 from thresher.algs.linear import compute as linear_compute
@@ -16,6 +17,7 @@ from thresher.algs.sgd import compute as sgd_compute
 from thresher.exceptions import UNKNOWN_ALGORITHM
 from thresher.utils import validate_actual_classes
 
+EXACT_ALGORITHM = algorithm.available_algorithms["exact"]
 LINEAR_ALGORITHM = algorithm.available_algorithms["ls"]
 STOCHASTIC_GRADIENT_DESCENT = algorithm.available_algorithms["sgd"]
 GENETIC_ALGORITHM = algorithm.available_algorithms["gen"]
@@ -26,36 +28,25 @@ STOCHASTIC_GRID_SEARCH_ALGORITHM = algorithm.available_algorithms["sgrid"]
 def run_oracle(data_traits: Mapping[str, Any]) -> algorithm.Algorithm:
     """Pick an algorithm from the traits of the input data.
 
-    The bounds come from each algorithm's `data_vol_thresh`, so changing those values in
-    `algorithm.py` changes the routing here. The reasoning behind the current bounds is in
-    `examples/performance_test/ThresherPerformanceTest.ipynb`.
+    Always `exact` since 0.4.0. The oracle used to trade accuracy against input size,
+    routing to linear search below 1,000 rows, grid search below 50,000 and stochastic
+    gradient descent above that, because the only exact algorithm available was O(n²) and
+    became unaffordable. `exact` removed that trade-off: it is exact at every size *and*
+    cheaper than the approximations it replaced, so there is nothing left to weigh up.
+
+    The other algorithms remain selectable by name. This function is kept, rather than
+    inlined into the caller, because a future algorithm might reintroduce a genuine
+    trade-off - a metric other than accuracy, say - and this is where that decision
+    belongs.
 
     Args:
-        data_traits: measurements of the input. Only `data_length`, the number of scores,
-            is consulted today.
+        data_traits: measurements of the input. `data_length`, the number of scores, is
+            no longer consulted.
 
     Returns:
-        Linear search at 1,000 rows or fewer, where an exact search is affordable; grid
-        search up to 50,000; stochastic gradient descent above that, where only a
-        subsample-based solver stays cheap.
-
-    Raises:
-        TypeError: if either routing threshold is unset in the registry, which would make
-            the comparisons below meaningless.
+        The exact sweep.
     """
-    data_volume = data_traits["data_length"]
-
-    linear_threshold = LINEAR_ALGORITHM.data_vol_thresh
-    grid_threshold = GRID_SEARCH_ALGORITHM.data_vol_thresh
-    if linear_threshold is None or grid_threshold is None:
-        # A plain check rather than an assert, so it survives `python -O`.
-        raise TypeError("The 'ls' and 'grid' algorithms must both define a data_vol_thresh.")
-
-    if data_volume <= linear_threshold:
-        return LINEAR_ALGORITHM
-    if data_volume <= grid_threshold:
-        return GRID_SEARCH_ALGORITHM
-    return STOCHASTIC_GRADIENT_DESCENT
+    return EXACT_ALGORITHM
 
 
 def run_computations(
@@ -94,6 +85,8 @@ def run_computations(
     if verbose:
         print(f"Executing the {chosen_algorithm.full_name} algorithm... please wait for the result.")
 
+    if chosen_algorithm == EXACT_ALGORITHM:
+        return exact_compute.run(scores, actual_classes, verbose, progress_bar, alg_options)
     if chosen_algorithm == LINEAR_ALGORITHM:
         if allow_parallel and ("n_jobs" in alg_options) and (alg_options["n_jobs"] != 1):
             return linear_compute.run_parallel(scores, actual_classes, verbose, alg_options["n_jobs"])

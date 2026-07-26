@@ -20,6 +20,7 @@ MEDIUM_LOWER, MEDIUM_UPPER = 0.40, 0.65
     ("algorithm_name", "algorithm_params"),
     [
         pytest.param(None, {}, id="oracle-default"),
+        pytest.param("exact", {}, id="exact"),
         pytest.param("linear", {}, id="linear"),
         pytest.param("sim", {}, id="genetic"),
         pytest.param("grid", {}, id="grid"),
@@ -44,9 +45,15 @@ def test_medium_dataset(
     assert MEDIUM_LOWER <= result < MEDIUM_UPPER
 
 
-def test_oracle_picks_grid_for_the_medium_dataset(medium_dataset: Dataset) -> None:
-    scores, _ = medium_dataset
-    assert run_oracle({"data_length": len(scores)}) == algorithm.available_algorithms["grid"]
+@pytest.mark.parametrize("data_length", [2, 500, 1_000, 50_000, 10_000_000])
+def test_oracle_always_picks_the_exact_sweep(data_length: int) -> None:
+    """Since 0.4.0 there is no size at which an approximation is preferable.
+
+    The oracle used to route on input volume because the only exact algorithm was O(n²).
+    'exact' is exact at every size and cheaper than what it replaced, so the trade-off the
+    ladder encoded no longer exists.
+    """
+    assert run_oracle({"data_length": data_length}) == algorithm.available_algorithms["exact"]
 
 
 def test_tiny_dataset(tiny_dataset: Dataset) -> None:
