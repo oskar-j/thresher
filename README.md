@@ -86,6 +86,16 @@ returns:
 
 ### An oracle mechanism
 
+> [!WARNING]
+> **Deprecated — to be removed in `0.5.0`.** The oracle existed to choose between
+> algorithms that traded accuracy against input size. [Exact sweep](#exact-sweep) settled
+> that question: it is exact at every size and cheaper than everything it chose between,
+> so there is no longer a decision to delegate. In `0.5.0` the mechanism goes away and
+> `exact` becomes the plain default. Nothing is required of you if you use the default
+> today — you already get `exact`. If you pass `algorithm='auto'` explicitly, it will keep
+> working as an alias for the default; any code reading the routing behaviour itself
+> should select an algorithm by name instead.
+
 We implemented a meta-optimizer - an 'oracle' mechanism, which chooses the algorithm for you. This is the default behaviour, and can be controlled by changing the `algorithm` param of the `Thresher` constructor. See the source code of [oracle.py](https://github.com/oskar-j/thresher/blob/main/src/thresher/oracle.py) and [interface.py](https://github.com/oskar-j/thresher/blob/main/src/thresher/interface.py) for more details.
 
 Since `0.4.0` it always chooses [Exact sweep](#exact-sweep), and the choice is no longer

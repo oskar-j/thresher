@@ -6,6 +6,7 @@ force search over every distinguishable threshold rather than against a toleranc
 
 import random
 from collections.abc import Callable
+from itertools import pairwise
 
 import pytest
 
@@ -17,14 +18,11 @@ DatasetFactory = Callable[..., Dataset]
 
 def accuracy(threshold: float, scores: list[float], actual_classes: list[int]) -> float:
     """Fraction of samples the threshold classifies correctly."""
-    return (
-        sum(
-            1
-            for score, actual in zip(scores, actual_classes, strict=True)
-            if (1 if score > threshold else -1) == actual
-        )
-        / len(scores)
-    )
+    return sum(
+        1
+        for score, actual in zip(scores, actual_classes, strict=True)
+        if (1 if score > threshold else -1) == actual
+    ) / len(scores)
 
 
 def best_in_range_accuracy(scores: list[float], actual_classes: list[int]) -> float:
@@ -35,7 +33,7 @@ def best_in_range_accuracy(scores: list[float], actual_classes: list[int]) -> fl
     the sweep has to meet.
     """
     unique = sorted(set(scores))
-    candidates = [(low + high) / 2 for low, high in zip(unique, unique[1:], strict=False)]
+    candidates = [(low + high) / 2 for low, high in pairwise(unique)]
     candidates.append(unique[-1])
     return max(accuracy(t, scores, actual_classes) for t in candidates)
 
@@ -129,8 +127,7 @@ def test_is_deterministic(separable: DatasetFactory) -> None:
     scores, actual_classes = separable(500, seed=11)
 
     results = {
-        thresher.Thresher(algorithm="exact").optimize_threshold(scores, actual_classes)
-        for _ in range(5)
+        thresher.Thresher(algorithm="exact").optimize_threshold(scores, actual_classes) for _ in range(5)
     }
 
     assert len(results) == 1

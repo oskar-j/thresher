@@ -94,11 +94,9 @@ def run(
 
         if correct > best_correct:
             best_correct = correct
-            if position < total:
-                best_threshold = (score + paired[position][0]) / 2
-            else:
-                # Past the largest score: nothing is predicted positive.
-                best_threshold = float(score)
+            # Below the largest score, sit between the two samples being separated;
+            # at the largest score, sit on it, which predicts everything negative.
+            best_threshold = (score + paired[position][0]) / 2 if position < total else float(score)
 
     if progress_bar:
         print_progress_bar(total, total)

@@ -48,6 +48,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   duplicates, ties and inverted labels, `exact` matched the brute-force optimum every time
   and beat `ls` in 287 of them.
 
+### Deprecated
+
+- **The oracle mechanism, to be removed in `0.5.0`.** It existed to choose between
+  algorithms trading accuracy against input size, and `exact` settled that question, so
+  there is nothing left to delegate. `exact` becomes the plain default in `0.5.0`. Code
+  using the default is unaffected - it already resolves to `exact` - and
+  `algorithm='auto'` will keep working as an alias for the default.
+
 ### Changed
 
 - **The oracle now always selects `exact`.** It previously routed on input size - linear
