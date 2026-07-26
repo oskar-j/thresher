@@ -2,7 +2,7 @@
 # make itself - the underlying commands are in CONTRIBUTING.md if you would rather run them
 # directly.
 
-.PHONY: help install check test fmt types bench build clean all
+.PHONY: help install check test cov fmt types bench build clean all
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -24,6 +24,11 @@ check:  ## Run every pre-commit hook over the whole tree
 
 test:  ## Run the test suite
 	uv run pytest
+
+cov:  ## Run the tests with coverage, enforcing the same threshold CI does
+	uv run pytest --cov --cov-report=term-missing
+	@echo "Note: Ray cannot be installed on macOS x86_64, so ray_backend.py is"
+	@echo "uncovered there and the local figure understates CI's."
 
 types:  ## Type-check with mypy
 	uv run mypy
