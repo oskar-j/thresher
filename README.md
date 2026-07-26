@@ -1,9 +1,11 @@
 # Thresher - THRESHold EvaluatoR for Python
 
 [![PyPI version](https://img.shields.io/pypi/v/thresher-py.svg)](https://pypi.org/project/thresher-py/)
+[![Python versions](https://img.shields.io/pypi/pyversions/thresher-py.svg)](https://pypi.org/project/thresher-py/)
 [![Build](https://img.shields.io/github/actions/workflow/status/oskar-j/thresher/ci.yml?branch=main&label=build)](https://github.com/oskar-j/thresher/actions/workflows/ci.yml)
 [![Downloads](https://img.shields.io/pepy/dt/thresher-py)](https://pepy.tech/project/thresher-py)
 [![Stars](https://img.shields.io/github/stars/oskar-j/thresher)](https://github.com/oskar-j/thresher/stargazers)
+[![License](https://img.shields.io/pypi/l/thresher-py.svg)](https://github.com/oskar-j/thresher/blob/main/LICENSE)
 
 > ### Your model gives you probabilities. Where you cut them is a decision — stop leaving it at 0.5.
 
@@ -20,9 +22,15 @@ right answer is the gap between a model that looks fine on paper and one that is
 threshold that classifies the highest fraction of your samples correctly:
 
 ```python
-import thresher
+from thresher import Thresher
 
-thresher.Thresher().optimize_threshold(scores, actual_classes)
+Thresher().optimize_threshold(scores, actual_classes)
+```
+
+Or without writing any Python at all, straight from a terminal:
+
+```
+thresher scores.csv
 ```
 
 That is the whole interface. Everything else in this README is about tuning what happens
@@ -47,6 +55,7 @@ underneath — which of the five search algorithms runs, and how hard it looks.
 - [Custom parameters](#custom-parameters)
   - [Control parameters for the algorithms](#control-parameters-for-the-algorithms)
 - [Sample usage](#sample-usage)
+- [Command line](#command-line)
 - [Performance tests](#performance-tests)
 - [Future work](#future-work)
 
@@ -317,6 +326,40 @@ print(f'Optimization result: {t.optimize_threshold(cases, actual_labels)}')
 ```
 
 See the [examples](https://github.com/oskar-j/thresher/tree/main/examples) directory for more sample code.
+
+## Command line
+
+Installing the package also installs a `thresher` command, so you can find a threshold
+without writing any Python. Point it at a file with one row per sample — a score and a
+ground-truth class:
+
+```
+$ thresher scores.csv
+0.35
+```
+
+It prints the bare number to stdout and nothing else, so it pipes cleanly:
+
+```
+$ THRESHOLD=$(thresher scores.csv)
+$ cat scores.csv | thresher -          # '-' reads stdin
+```
+
+Your data rarely arrives in exactly the expected shape, so the common adjustments are all
+flags:
+
+```
+thresher scores.csv --labels 0,1                          # your classes are 0 and 1
+thresher scores.csv -a grid                               # choose the algorithm yourself
+thresher data.tsv --sep '\t' --no-header                  # tab-separated, no header row
+thresher wide.csv --score-column pred --label-column y    # pick columns by name
+thresher scores.csv -a ls -p n_jobs=4                     # pass algorithm parameters
+```
+
+`thresher --list-algorithms` shows the algorithms and their aliases, and `thresher --help`
+documents every flag. Errors are reported in command-line terms rather than as Python
+tracebacks, and exit codes follow the usual convention: `2` for a usage mistake, `1` when
+the data itself cannot be optimized.
 
 ## Performance tests
 

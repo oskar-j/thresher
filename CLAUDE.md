@@ -42,6 +42,24 @@ uv run mypy                          # strict, over src/ and tests/
 
 `[tool.mypy]` deliberately sets no `python_version`. Pinning it to 3.10 makes mypy fail while parsing numpy's bundled stubs, which use 3.12+ `type` statements. The CI matrix is what actually proves 3.10 compatibility.
 
+### Command line
+
+The package installs a `thresher` console script, defined by `[project.scripts]` in
+`pyproject.toml` and implemented in `src/thresher/cli.py` with click.
+
+```bash
+uv run thresher scores.csv
+uv run thresher --list-algorithms
+```
+
+The `thresher` command name was checked against the ecosystem before being claimed (July 2026) and is unused: no Debian or Ubuntu package ships a `bin/thresher`, there is no Homebrew formula, and Arch official and AUR both return nothing. Debian's `kthresher` is a kernel-purging tool with a different command name. The npm `thresher` package exists but declares no `bin`, so it never reaches a PATH. PyPI does hold a `thresher` distribution, but it is a 0.0.1 registration with **no uploaded files** - `pip install thresher` fails outright - so it cannot install a command either. The one thing to watch: if that PyPI name is ever populated with a real distribution, it would collide both on the command and on the `thresher` import package, since our distribution is `thresher-py` but our module is `thresher`.
+
+`cli.py` deliberately rewrites library exception messages for a terminal audience - see
+`_with_cli_hint`. The library's errors name Python methods and constructor options, which
+someone in a shell cannot act on. If you change the wording of a `ValueError` in `src/`,
+check whether that function still matches; `tests/test_cli.py::TestErrors` asserts the
+Python-API phrasing does *not* reach the terminal.
+
 ### Examples
 
 Run from anywhere; they resolve their data relative to the source file:
