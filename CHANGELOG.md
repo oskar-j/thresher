@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-26
+
+### Fixed
+
+- `exact` now considers the "classify everything as positive" split, and is therefore
+  optimal over every split a threshold can induce rather than only those inside the data.
+  Expressing it needs a threshold below the smallest score, which nothing could previously
+  return, so on data where scores and classes run contrary to each other the best answer
+  was unreachable. Given `[0.1, 0.2, 0.3]` labelled `[1, 1, -1]` the sweep returned `0.15`,
+  classifying 1 of 3 correctly, where 2 of 3 was available. The threshold used is
+  `math.nextafter(min(scores), -inf)` - the largest float that qualifies, so the answer
+  stays as close to the data as the representation allows - and it is taken only on a
+  strict improvement, never to break a tie. Across 4,000 randomised inputs the sweep now
+  matches a brute force over both edge splits every time; the new split is chosen in about
+  10% of them.
+
+  This is the only case where a returned threshold can fall outside the range of the input.
+  The other algorithms cannot express either edge split and are unchanged.
+
+### Added
+
+- A `Makefile` with `install`, `check`, `test`, `fmt`, `types`, `bench` and `build`
+  targets. `make install` installs the git pre-commit hook alongside the dependencies, and
+  `make check` runs `git add --intent-to-add .` before the hooks.
+
+  That last detail is the point of it. `pre-commit run --all-files` only sees files git
+  already tracks, so a newly created file is skipped in silence while the run reports
+  success - and CI, which checks out the committed tree, then fails on exactly what the
+  green local run missed. That caught out two releases in a row. `make check` closes it,
+  and the installed hook closes it again at commit time.
+
 ## [0.4.0] - 2026-07-26
 
 ### Added
@@ -355,7 +386,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/oskar-j/thresher/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/oskar-j/thresher/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/oskar-j/thresher/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/oskar-j/thresher/compare/v0.3.0...v0.3.1

@@ -132,6 +132,13 @@ which gives the same `O(n log n)` bound "because of the sorting of the feature v
 
 It has no parameters. There is no accuracy left to trade for speed.
 
+Since `0.4.1` it considers both edge splits as well as every interior one, so the answer is
+optimal over *every* split a threshold can induce. One of those edges — "classify
+everything as positive" — needs a threshold below your smallest score, so that is the one
+case where the result can fall just outside the range of your input. It is returned only
+when it genuinely beats every threshold inside the data, which takes scores and classes
+running contrary to each other.
+
 Compared with linear search, which it supersedes, it is exact in the same sense and
 strictly faster - by 104× at 1,000 rows and 1,358× at 16,000, a gap that widens with every
 row. It is also *slightly more accurate*: linear search only ever considers the midpoints
@@ -308,17 +315,19 @@ Run the test suite ([pytest](https://docs.pytest.org/), from anywhere in the rep
 uv run pytest
 ```
 
-Lint, format and type-check with the same hooks CI runs:
+Or use the shortcuts, which also install the git pre-commit hook:
 
 ```
-uv run pre-commit run --all-files
+make install     # dependencies + git hook
+make test        # the test suite
+make check       # every lint, format and type check CI runs
+make help        # the rest
 ```
 
-Optionally install the git hook so those run on every commit:
-
-```
-uv run pre-commit install
-```
+Prefer `make check` to running `pre-commit run --all-files` directly: that command only
+sees files git already tracks, so a newly created file is skipped in silence and the run
+reports success without having looked at it. `make check` makes new files visible to the
+hooks first.
 
 ### Project layout
 

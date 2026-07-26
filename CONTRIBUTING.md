@@ -17,10 +17,15 @@ Oskar Jarczyk (`oskar.jarczyk@gmail.com`)
 
 ## Testing
 
-* Set up the environment with `uv sync --group dev`
-* Please make sure the full suite passes: `uv run pytest`
-* Run the checks CI runs before pushing: `uv run pre-commit run --all-files`
-* Optionally `uv run pre-commit install` so those checks run on every commit
+* Set up with `make install`, which installs the dependencies and the git pre-commit hook
+* Please make sure the full suite passes: `make test`
+* Run everything CI runs before pushing: `make check`
+
+Prefer `make check` over calling `pre-commit run --all-files` yourself. That command only
+sees files git already tracks, so a file you have just created is skipped without comment
+and the run reports success having never looked at it - CI then fails on the very thing
+your green local run missed. `make check` registers new paths first so the hooks see them.
+`make help` lists the rest.
 
 Pull requests are gated on both: the `pre-commit` job and the `test` matrix must be green
 before a branch can be merged into `main`.

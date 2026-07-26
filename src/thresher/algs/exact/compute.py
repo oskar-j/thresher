@@ -24,6 +24,7 @@ The result is not an approximation: it is the best threshold available, the same
 linear search arrives at, and it is reached without ever scoring a candidate twice.
 """
 
+import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -50,9 +51,14 @@ def run(
 
     Returns:
         A threshold yielding the highest achievable fraction of correctly classified
-        samples. Where several thresholds tie, the lowest is returned. Interior results
-        are the midpoint between the two scores they separate, matching linear search;
-        a result equal to `max(scores)` means every sample is best classified negative.
+        samples - the best that exists, over every split a threshold can induce.
+
+        Interior results are the midpoint between the two scores they separate, matching
+        linear search. Two results sit at the edges: `max(scores)` classifies everything
+        negative, and a value just below `min(scores)` classifies everything positive.
+        The latter is the only result that can fall outside the span of the input, and it
+        is returned only when it beats every threshold inside it, which needs data where
+        score and class run contrary to each other.
 
     Raises:
         ValueError: if no scores were given.
@@ -100,6 +106,15 @@ def run(
 
     if progress_bar:
         print_progress_bar(total, total)
+
+    # The one split no threshold inside the data can express: everything classified
+    # positive, which needs a threshold strictly below the smallest score. nextafter gives
+    # the largest float that qualifies, so the answer stays as close to the data as the
+    # representation allows. Considered last, and only taken on a strict improvement, so a
+    # threshold outside the input range is never returned merely to break a tie.
+    if total_positive > best_correct:
+        best_correct = total_positive
+        best_threshold = math.nextafter(paired[0][0], -math.inf)
 
     if verbose:
         print(f"Best threshold {best_threshold} classifies {best_correct}/{total} correctly.")
