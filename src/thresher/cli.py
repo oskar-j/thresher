@@ -13,6 +13,7 @@ import click
 import pandas as pd
 
 from thresher import algorithm
+from thresher.backends import AVAILABLE_BACKENDS
 from thresher.interface import Thresher
 
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
@@ -196,6 +197,15 @@ def _list_algorithms(ctx: click.Context, _param: click.Parameter, value: bool) -
     metavar="KEY=VALUE",
     help="Algorithm parameter, repeatable. Example: -p n_jobs=4 -p stoch_ratio=0.1",
 )
+@click.option(
+    "-b",
+    "--backend",
+    type=click.Choice(AVAILABLE_BACKENDS),
+    default="local",
+    show_default=True,
+    help="Where the counting runs. 'ray' spreads it over a Ray cluster and needs "
+    "thresher-py[ray]; it changes the speed, never the answer.",
+)
 @click.option("-v", "--verbose", is_flag=True, help="Report progress on stderr.")
 @click.option(
     "--list-algorithms",
@@ -215,6 +225,7 @@ def main(
     sep: str,
     header: bool,
     params: tuple[str, ...],
+    backend: str,
     verbose: bool,
 ) -> None:
     """Find the threshold that best separates two classes of scores.
@@ -228,6 +239,7 @@ def main(
       thresher scores.csv --labels 0,1 -a grid
       thresher data.tsv --sep '\\t' --score-column pred --label-column actual
       cat scores.csv | thresher - -p n_jobs=4
+      thresher big.csv --backend ray
     """
     source: Any = sys.stdin if input_file == "-" else Path(input_file)
 
@@ -246,6 +258,7 @@ def main(
         "algorithm": algorithm_name,
         "verbose": verbose,
         "algorithm_params": _parse_params(params),
+        "backend": backend,
     }
     label_pair = _parse_labels(labels_raw)
     if label_pair is not None:
@@ -256,6 +269,10 @@ def main(
 
     try:
         threshold = Thresher(**options).optimize_threshold(scores, actual_classes)
+    except ImportError as exc:
+        # Asking for a backend whose dependency is missing; the message already says how
+        # to install it.
+        raise click.ClickException(str(exc)) from exc
     except ValueError as exc:
         # Bad algorithm names and unusable labels both arrive here, already carrying a
         # message written for a human - just one aimed at the Python API.

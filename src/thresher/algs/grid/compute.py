@@ -12,6 +12,7 @@ from typing import Any
 
 import numpy as np
 
+from thresher.backends import Backend, LocalBackend
 from thresher.utils import get_or_default, print_progress_bar
 
 no_of_decimal_places_default = 2
@@ -71,6 +72,7 @@ def run(
     progress_bar: bool,
     alg_options: Mapping[str, Any],
     stochastic: bool = False,
+    backend: Backend | None = None,
 ) -> float:
     """Evaluate every point on a fixed grid over [0, 1] and keep the best.
 
@@ -86,6 +88,9 @@ def run(
             when `stochastic`; `reshuffle` (False) draws a fresh sample for every
             candidate instead of reusing one, again only when `stochastic`.
         stochastic: score each candidate against a subsample rather than all the data.
+        backend: where the counting happens. Defaults to in-process, and is used only for
+            the exhaustive path - the stochastic one draws its own subsamples, which
+            sharding would change.
 
     Returns:
         The grid point with the highest measured accuracy. Note the grid always spans
@@ -107,6 +112,18 @@ def run(
 
     if verbose:
         print(f"Evaluating {batch_size} solutions. Please wait for results.")
+
+    if not stochastic:
+        # The exhaustive path is exactly "score these candidates, keep the best", which is
+        # what a backend parallelises. max() over indices takes the first maximum, which
+        # is the tie-breaking the loop below also used.
+        candidates = [float(point) for point in np.linspace(0, 1, batch_size)]
+        if progress_bar:
+            print_progress_bar(0, batch_size)
+        tallies = (backend or LocalBackend()).tally_candidates(candidates, scores, actual_classes)
+        if progress_bar:
+            print_progress_bar(batch_size, batch_size)
+        return candidates[max(range(len(tallies)), key=tallies.__getitem__)]
 
     # Drawn once when every candidate is to be judged against the same subsample; left
     # empty, and never read, in the other two modes.

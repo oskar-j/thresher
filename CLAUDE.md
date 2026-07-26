@@ -117,6 +117,14 @@ User-supplied `algorithm_params` reach solvers as an `alg_options` mapping whose
 - `meta_optimizer.py::calculate_range_mean` — per-class mean, used by `genetic` to seed its initial population range.
 - `tools.py::granularity_of_scores` — rounding generator.
 
+### Execution backends
+
+`src/thresher/backends/` decides *where* the counting happens. `local` is the default and runs in-process; `ray` shards the data across a Ray cluster. The rule the design rests on: **a backend never changes the answer, only where the work runs.** That is enforceable because both map steps (`tally_chunk`, `count_chunk`) are plain functions in `backends/base.py` that the Ray backend ships to workers unchanged, and both reduce steps are addition, which is order-independent. `tests/test_backends.py::TestRay` asserts the two backends return *identical* results.
+
+Only `exact`, `ls` and `grid` are distributed. `sgrid` and `gen` draw a fresh random subsample per evaluation, so sharding would change which samples are read and therefore the answer; `sgd` is a sequential walk. Those three run in-process whatever backend is passed — do not "fix" that without accepting a semantic change.
+
+**Ray cannot be installed on macOS x86_64** — there is no wheel. The dev dependency carries a marker excluding that platform, `tests/test_backends.py` skips its Ray class via `importorskip`, and CI (Linux) is where those tests actually execute. If you are on an Intel Mac, a green local run has *not* exercised the Ray path; check CI.
+
 ### Why `exact` supersedes the rest
 
 `algs/exact/compute.py` sorts once and sweeps with running class counts, so each candidate threshold costs O(1) instead of O(n) — O(n log n) overall against linear search's O(n²), and 1,358× faster at 16,000 rows. It is exact, so it has no parameters; there is no accuracy to trade for speed. The other four algorithms predate it and are kept selectable, but nothing should route to them by default.

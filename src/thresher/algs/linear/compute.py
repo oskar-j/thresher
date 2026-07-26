@@ -9,6 +9,7 @@ import multiprocessing as mp
 from collections.abc import Iterator, Sequence
 from functools import partial
 
+from thresher.backends import Backend, LocalBackend
 from thresher.utils import pairwise, print_progress_bar
 
 
@@ -96,7 +97,13 @@ def run_parallel(scores: Sequence[float], actual_classes: Sequence[int], verbose
     return next(i[0] for i in sorted(results, key=lambda x: x[1], reverse=True))
 
 
-def run(scores: Sequence[float], actual_classes: Sequence[int], verbose: bool, progress_bar: bool) -> float:
+def run(
+    scores: Sequence[float],
+    actual_classes: Sequence[int],
+    verbose: bool,
+    progress_bar: bool,
+    backend: Backend | None = None,
+) -> float:
     """Evaluate the midpoint between every pair of adjacent scores, exactly.
 
     Unlike the other solvers this one takes no `alg_options`; its only parameter, `n_jobs`,
@@ -106,7 +113,9 @@ def run(scores: Sequence[float], actual_classes: Sequence[int], verbose: bool, p
         scores: the values being split.
         actual_classes: the matching ground-truth classes, as -1 and 1.
         verbose: print progress information.
-        progress_bar: draw a progress bar on stdout.
+        progress_bar: draw a progress bar on stdout. Since 0.4.2 the candidates are scored
+            in one batch, so this brackets the work rather than advancing through it.
+        backend: where the counting happens. Defaults to in-process.
 
     Returns:
         The midpoint threshold with the highest accuracy. Where several tie, the first one
@@ -115,9 +124,6 @@ def run(scores: Sequence[float], actual_classes: Sequence[int], verbose: bool, p
     Raises:
         ValueError: if fewer than two scores were given, leaving no midpoint to evaluate.
     """
-    best_threshold: float | None = None
-    best_accuracy: float = -1.0
-
     batch_size = len(scores)
 
     if verbose:
@@ -126,35 +132,22 @@ def run(scores: Sequence[float], actual_classes: Sequence[int], verbose: bool, p
             f"It can take some time, depending on the data volume."
         )
 
-    for iteration, (a, b) in enumerate(pairwise(sorted(scores)), start=1):
-        if progress_bar:
-            print_progress_bar(iteration, batch_size)
+    # Every midpoint between adjacent sorted scores, duplicates included, exactly as
+    # before - scoring them is now one batched call instead of a nested loop.
+    candidates = [(low + high) / 2 for low, high in pairwise(sorted(scores))]
 
-        middle = (a + b) / 2
-
-        count_correct, count_incorrect = 0, 0
-
-        # strict=False keeps the historical behaviour of stopping at the shorter input.
-        # See "Silent wrong answers" in CLAUDE.md - making this strict would reject
-        # mismatched lengths, which is a deliberate behaviour change, not a lint fix.
-        for score, actual in zip(scores, actual_classes, strict=False):
-            predicted = 1 if score > middle else -1
-            if predicted == actual:
-                count_correct += 1
-            else:
-                count_incorrect += 1
-
-        accuracy = count_correct / (count_correct + count_incorrect)
-
-        if accuracy > best_accuracy:
-            best_threshold, best_accuracy = middle, accuracy
-
-    if progress_bar:
-        print_progress_bar(batch_size, batch_size)
-
-    if best_threshold is None:
+    if not candidates:
         # 'pairwise' yields nothing for fewer than two scores, so there was no candidate
         # threshold to evaluate at all.
         raise ValueError("At least two scores are needed to evaluate a threshold.")
 
-    return best_threshold
+    if progress_bar:
+        print_progress_bar(0, batch_size)
+
+    tallies = (backend or LocalBackend()).tally_candidates(candidates, scores, actual_classes)
+
+    if progress_bar:
+        print_progress_bar(batch_size, batch_size)
+
+    # max() over indices returns the first maximum, keeping the original tie-breaking.
+    return candidates[max(range(len(tallies)), key=tallies.__getitem__)]

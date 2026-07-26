@@ -4,6 +4,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from thresher import algorithm
+from thresher.backends import get_backend
 from thresher.exceptions import NOT_IMPLEMENTED_ERROR
 from thresher.oracle import run_computations, run_oracle
 from thresher.utils import map_labels
@@ -65,6 +66,7 @@ class ThresherBase:
             self.options["progress_bar"],
             self.options["allow_parallel"],
             self.options["algorithm_params"],
+            get_backend(self.options["backend"]),
         )
 
 
@@ -88,10 +90,12 @@ class Thresher(ThresherBase):
 
         Args:
             **kwargs: any of the documented options - 'algorithm', 'allow_parallel',
-                'verbose', 'progress_bar', 'algorithm_params' and 'labels'.
+                'verbose', 'progress_bar', 'algorithm_params', 'labels' and 'backend'.
 
         Raises:
-            ValueError: if 'algorithm' names no known algorithm.
+            ValueError: if 'algorithm' names no known algorithm, or 'backend' no known
+                backend.
+            ImportError: if 'backend' is 'ray' and Ray is not installed.
         """
         super().__init__()
 
@@ -101,11 +105,16 @@ class Thresher(ThresherBase):
             "verbose": False,
             "progress_bar": False,
             "algorithm_params": {},
+            "backend": "local",
         }
 
         self.options.update(kwargs)
 
         self.options["algorithm"] = algorithm.retrieve_by_alias(self.options["algorithm"])
+        # Resolve now rather than at optimize_threshold time, so a bad backend name - or a
+        # missing Ray - is reported when the object is built, not several seconds into a
+        # long run.
+        get_backend(self.options["backend"])
 
     def get_current_algorithm(self) -> dict[str, Any]:
         """Get the algorithm this instance is currently set to use.
