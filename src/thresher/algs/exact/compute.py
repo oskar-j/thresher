@@ -29,6 +29,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from thresher.backends import Backend, LocalBackend
+from thresher.exceptions import InsufficientDataError
 from thresher.utils import print_progress_bar
 
 
@@ -66,10 +67,10 @@ def run(
         score and class run contrary to each other.
 
     Raises:
-        ValueError: if no scores were given.
+        InsufficientDataError: if no scores were given. It is a `ValueError`.
     """
     if not scores:
-        raise ValueError("At least one score is needed to evaluate a threshold.")
+        raise InsufficientDataError("At least one score is needed to evaluate a threshold.")
 
     # The sweep needs only the class counts at each distinct score, never the samples
     # themselves - which is precisely what makes it distributable.

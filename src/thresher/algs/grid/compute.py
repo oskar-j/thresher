@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 
 from thresher.backends import Backend, LocalBackend
+from thresher.exceptions import InsufficientDataError
 from thresher.utils import get_or_default, print_progress_bar
 
 no_of_decimal_places_default = 2
@@ -97,7 +98,8 @@ def run(
         [0, 1], so scores outside that range are only ever split at its edges.
 
     Raises:
-        ValueError: if the grid yielded no candidates at all.
+        InsufficientDataError: if the grid yielded no candidates at all. It is a
+            `ValueError`.
     """
     best_threshold: float | None = None
     best_accuracy: float = -1.0
@@ -163,6 +165,6 @@ def run(
         print_progress_bar(batch_size, batch_size)
 
     if best_threshold is None:
-        raise ValueError("The grid produced no candidate thresholds to evaluate.")
+        raise InsufficientDataError("The grid produced no candidate thresholds to evaluate.")
 
     return best_threshold

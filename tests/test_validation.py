@@ -81,13 +81,23 @@ def test_validation_survives_optimized_mode() -> None:
 
     Malformed input would then reach the solvers instead of being rejected.
     """
-    source = "import thresher;thresher.Thresher().optimize_threshold([0.1, 0.2, 0.3], [-1, -1, -1])"
+    source = (
+        "import thresher\n"
+        "try:\n"
+        "    thresher.Thresher().optimize_threshold([0.1, 0.2, 0.3], [-1, -1, -1])\n"
+        "except ValueError as exc:\n"
+        "    print(type(exc).__name__)\n"
+        "    raise SystemExit(3) from None\n"
+        "raise SystemExit(0)\n"
+    )
     completed = subprocess.run(
         [sys.executable, "-O", "-c", source], capture_output=True, text=True, check=False
     )
 
-    assert completed.returncode != 0, "invalid input was accepted under -O"
-    assert "ValueError" in completed.stderr
+    assert completed.returncode == 3, f"invalid input was accepted under -O: {completed.stderr}"
+    # Caught as a plain ValueError, which is what code written before 0.4.5 does, and
+    # reported as the specific type, which is what code written after it can do.
+    assert completed.stdout.strip() == "SingleClassError"
 
 
 class TestLengthMismatch:

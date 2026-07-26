@@ -113,6 +113,12 @@ Three layers, each in its own file; a call flows strictly downward:
 - **Oracle selection** — as of 0.4.0 `run_oracle()` returns `exact` unconditionally, and `data_vol_thresh` is advisory only. The old ladder (`≤1000 → linear`, `≤50000 → grid`, else `sgd`) traded accuracy against size because the only exact algorithm was O(n²); `exact` is exact at every size *and* cheaper, so the trade-off is gone. Editing `data_vol_thresh` no longer changes any behaviour.
 - **The public algorithm list** — `get_supported_algorithms()` returns its keys.
 
+### Exceptions
+
+`exceptions.py` holds a hierarchy rooted at `ThresherError`, plus the message templates the classes format. **Every class also inherits the builtin it was raised as before 0.4.5** - `ValueError`, `TypeError`, `AttributeError`, `ImportError`, `NotImplementedError`. That dual inheritance is load-bearing, not decoration: it is what keeps existing `except ValueError` code working, including `cli.py`'s own handler. `tests/test_exceptions.py` asserts both directions for every failure, so removing a builtin base fails the suite.
+
+Raise the specific class rather than a builtin, and pass the detail rather than a formatted string - the classes build their own messages and keep the values as attributes.
+
 ### Label contract
 
 Internally everything is `-1` / `1`. `Thresher.optimize_threshold` runs `utils.map_labels()` when a `labels` option is passed (e.g. `labels=(0,1)`), and `run_computations()` opens with `utils.validate_actual_classes()`, which raises `ValueError` for empty, single-class or out-of-range labels. Solvers may assume the contract and hardcode `1 if score > threshold else -1`. If you add a code path reaching a solver without going through `optimize_threshold`, normalize the labels yourself. Note this is a plain check rather than an `assert` precisely so it survives `python -O`.

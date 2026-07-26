@@ -20,6 +20,7 @@ from thresher.backends.base import (
     plan_shards,
     tally_chunk,
 )
+from thresher.exceptions import BackendDependencyError
 
 # A shard smaller than this costs more to schedule than to compute, so shards are widened
 # rather than multiplied below it.
@@ -39,12 +40,13 @@ def _require_ray() -> Any:
         The imported `ray` module.
 
     Raises:
-        ImportError: if Ray is not installed, carrying the install instructions.
+        BackendDependencyError: if Ray is not installed, carrying the install
+            instructions. It is an `ImportError`.
     """
     try:
         import ray
     except ImportError as exc:  # pragma: no cover - exercised only without Ray installed
-        raise ImportError(RAY_MISSING) from exc
+        raise BackendDependencyError(RAY_MISSING) from exc
     return ray
 
 
@@ -71,7 +73,8 @@ class RayBackend:
                 dataset costs more in scheduling than it saves in computation.
 
         Raises:
-            ImportError: if Ray is not installed. Checked here rather than on first use,
+            BackendDependencyError: if Ray is not installed, an `ImportError`. Checked
+                here rather than on first use,
                 so the failure lands when the backend is asked for instead of partway
                 through a long run.
         """

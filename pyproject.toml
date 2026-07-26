@@ -1,6 +1,6 @@
 [project]
 name = "thresher-py"
-version = "0.4.4"
+version = "0.4.5"
 description = "Find threshold for fine-tuning output from predict_proba"
 readme = "README.md"
 requires-python = ">=3.10"

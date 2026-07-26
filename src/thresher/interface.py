@@ -5,7 +5,7 @@ from typing import Any
 
 from thresher import algorithm
 from thresher.backends import get_backend
-from thresher.exceptions import NOT_IMPLEMENTED_ERROR
+from thresher.exceptions import NotIterableError
 from thresher.oracle import run_computations, run_oracle
 from thresher.utils import map_labels
 
@@ -93,9 +93,10 @@ class Thresher(ThresherBase):
                 'verbose', 'progress_bar', 'algorithm_params', 'labels' and 'backend'.
 
         Raises:
-            ValueError: if 'algorithm' names no known algorithm, or 'backend' no known
-                backend.
-            ImportError: if 'backend' is 'ray' and Ray is not installed.
+            ConfigurationError: if 'algorithm' names no known algorithm, or 'backend' no
+                known backend. It is a `ValueError`.
+            BackendDependencyError: if 'backend' is 'ray' and Ray is not installed. It is
+                an `ImportError`.
         """
         super().__init__()
 
@@ -146,7 +147,8 @@ class Thresher(ThresherBase):
             This same instance, so calls can be chained.
 
         Raises:
-            ValueError: if the name matches no known algorithm. This previously printed a
+            UnknownAlgorithmError: if the name matches no known algorithm, a
+                `ValueError`. This previously printed a
                 message and carried on with the old algorithm still in place, which left
                 callers believing a switch had happened when it had not.
         """
@@ -181,14 +183,15 @@ class Thresher(ThresherBase):
             Where several thresholds tie, any one of them may be returned.
 
         Raises:
-            AttributeError: if either argument is not iterable.
-            ValueError: if the labels are empty, single-class, outside (-1, 1), or a
-                different length from the scores.
+            NotIterableError: if either argument is not iterable. It is an
+                `AttributeError`.
+            InvalidInputError: if the labels are empty, single-class, outside (-1, 1), or
+                a different length from the scores. It is a `ValueError`.
         """
         if not isinstance(scores, Iterable):
-            raise AttributeError(NOT_IMPLEMENTED_ERROR)
+            raise NotIterableError
         if not isinstance(actual_classes, Iterable):
-            raise AttributeError(NOT_IMPLEMENTED_ERROR)
+            raise NotIterableError
 
         score_values = list(scores)
         if ("labels" in self.options) and (isinstance(self.options["labels"], Iterable)):

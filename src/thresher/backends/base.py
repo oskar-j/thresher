@@ -20,6 +20,8 @@ Two primitives cover every algorithm that can be parallelised:
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Protocol
 
+from thresher.exceptions import ShardMergeError
+
 # Negative and positive counts observed at one score.
 ClassCounts = tuple[int, int]
 
@@ -66,7 +68,8 @@ def merge_tallies(partials: Iterable[Sequence[int]]) -> list[int]:
         The summed tallies.
 
     Raises:
-        ValueError: if no partials were given, or they disagree on length.
+        ShardMergeError: if no partials were given, or they disagree on length. It is a
+            `ValueError`.
     """
     merged: list[int] | None = None
     for partial in partials:
@@ -74,12 +77,12 @@ def merge_tallies(partials: Iterable[Sequence[int]]) -> list[int]:
             merged = list(partial)
             continue
         if len(partial) != len(merged):
-            raise ValueError(f"shard tallies disagree on length: {len(partial)} vs {len(merged)}")
+            raise ShardMergeError(f"shard tallies disagree on length: {len(partial)} vs {len(merged)}")
         for index, value in enumerate(partial):
             merged[index] += value
 
     if merged is None:
-        raise ValueError("no shard tallies to merge")
+        raise ShardMergeError("no shard tallies to merge")
     return merged
 
 
