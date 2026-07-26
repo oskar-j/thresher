@@ -23,4 +23,14 @@ SINGLE_CLASS_LABELS = (
     "a threshold cannot be optimized against a single class."
 )
 
+LENGTH_MISMATCH = (
+    'Got {scores} scores but {classes} entries in "actual_classes". Each score needs the '
+    "class it belongs to, so the two must be the same length."
+)
+
+MISSING_LABELS = (
+    '"actual_classes" contains {count} missing value(s). Every score needs a known class; '
+    "rows with a blank or NaN label have to be filled in or dropped before optimizing."
+)
+
 EMPTY_INPUT = '"scores" and "actual_classes" are empty - there is nothing to optimize.'

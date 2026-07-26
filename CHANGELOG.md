@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-07-26
+
+Clears the outstanding entries from `CLAUDE.md`'s known issues, ahead of `0.5.0`.
+
+### Fixed
+
+- **Mismatched input lengths now raise instead of being silently truncated.** The solvers
+  pair `scores` and `actual_classes` with `zip`, which stops at the shorter sequence, so
+  six scores against four classes quietly discarded two scores and returned a threshold
+  computed from the rest - a wrong answer rather than a partial one, with nothing in the
+  result to hint at it. `optimize_threshold` now raises `ValueError` naming both counts.
+
+  This is a behaviour change: code that was relying on the truncation, knowingly or not,
+  will now see an exception. That is the point - it was previously getting an answer
+  derived from part of its data.
+
+- **Missing labels are now named as missing.** A blank cell in a CSV arrives as NaN, which
+  was reported as an unrecognised label and pointed at the `labels` option - advice that
+  fits a differently-encoded class, not an absent one, and that sends people looking for a
+  mapping which cannot exist. The message now says how many values are missing and that
+  those rows need filling in or dropping. Found while checking how the length-mismatch
+  error reads from the command line.
+
+### Added
+
+- **`stoch_ratio` for `sgd`** (default 0.05, unchanged), the one parameter the algorithm
+  did not expose while `gen` and `sgrid` both did. It is the documented lever against
+  sgd's weak spot - when one class is rare, a small subsample carries little information
+  about where the boundary lies. On 2,000 rows with 5% positives, raising it from 0.05 to
+  0.5 took the mean error from 0.0394 to 0.0035 and the worst case across 20 seeds from
+  0.302 to 0.013, at the cost of reading ten times as much data per step.
+
+### Changed
+
+- The README's "Sample usage" now imports the class directly, matching the opening example
+  since 0.3.2.
+
 ## [0.4.3] - 2026-07-26
 
 ### Added
@@ -448,7 +485,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.4.4...HEAD
+[0.4.4]: https://github.com/oskar-j/thresher/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/oskar-j/thresher/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/oskar-j/thresher/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/oskar-j/thresher/compare/v0.4.0...v0.4.1

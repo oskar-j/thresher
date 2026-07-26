@@ -133,3 +133,46 @@ def test_get_current_algorithm() -> None:
     current = thresher.Thresher(algorithm="grid").get_current_algorithm()
     assert current["name"] == "grid"
     assert current["object"] == algorithm.available_algorithms["grid"]
+
+
+@pytest.mark.parametrize("stoch_ratio", [0.05, 0.5])
+def test_sgd_sample_ratio_is_configurable(skewed: DatasetFactory, stoch_ratio: float) -> None:
+    """`stoch_ratio` was the one knob sgd did not expose, added in 0.4.4.
+
+    It is the documented lever against sgd's weak spot - when one class is rare, a small
+    subsample says little about where the boundary lies - so it has to actually reach the
+    sampling and not be silently ignored like an unknown key would be.
+    """
+    scores, actual_classes = skewed(2000, 0.95, seed=1)
+
+    result = thresher.Thresher(
+        algorithm="sgd", algorithm_params={"stoch_ratio": stoch_ratio}
+    ).optimize_threshold(scores, actual_classes)
+
+    assert min(scores) <= result <= max(scores)
+
+
+def test_a_larger_sgd_sample_reads_more_of_the_data(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Proves the option is wired through, rather than merely accepted and dropped."""
+    # Imported from where it is defined; sgd.compute merely imports it, and strict mypy
+    # will not treat an import as an attribute of the importing module.
+    from thresher.algs.common.stochastic import stochastic_process as original
+
+    seen: list[float] = []
+
+    def recording(
+        evaluated: float, scores: list[float], classes: list[int], factor: float, miss_class: bool = True
+    ) -> float:
+        seen.append(factor)
+        return original(evaluated, scores, classes, factor, miss_class)
+
+    # Patched by dotted path: `stochastic_process` is imported into that module rather
+    # than defined there, and strict mypy will not treat an import as a module attribute.
+    monkeypatch.setattr("thresher.algs.sgd.compute.stochastic_process", recording)
+
+    thresher.Thresher(algorithm="sgd", algorithm_params={"stoch_ratio": 0.42}).optimize_threshold(
+        [0.1, 0.2, 0.3, 0.4, 0.7, 0.8, 0.9, 0.95], [-1, -1, -1, -1, 1, 1, 1, 1]
+    )
+
+    assert seen, "sgd never sampled at all"
+    assert set(seen) == {0.42}, f"expected every sample to use 0.42, saw {sorted(set(seen))}"

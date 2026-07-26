@@ -182,7 +182,8 @@ class Thresher(ThresherBase):
 
         Raises:
             AttributeError: if either argument is not iterable.
-            ValueError: if the labels are empty, single-class, or outside (-1, 1).
+            ValueError: if the labels are empty, single-class, outside (-1, 1), or a
+                different length from the scores.
         """
         if not isinstance(scores, Iterable):
             raise AttributeError(NOT_IMPLEMENTED_ERROR)

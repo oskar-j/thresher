@@ -1,15 +1,44 @@
 """Helpers shared across the package: label handling, option lookup and output."""
 
+import math
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from itertools import tee
 from typing import Any, TypeVar
 
-from thresher.exceptions import EMPTY_INPUT, SINGLE_CLASS_LABELS, UNEXPECTED_LABELS
+from thresher.exceptions import (
+    EMPTY_INPUT,
+    LENGTH_MISMATCH,
+    MISSING_LABELS,
+    SINGLE_CLASS_LABELS,
+    UNEXPECTED_LABELS,
+)
 
 NEGATIVE_LABEL = -1
 POSITIVE_LABEL = 1
 
 T = TypeVar("T")
+
+
+def validate_lengths(scores: Sequence[float], actual_classes: Sequence[int]) -> None:
+    """Check that every score has a class to go with it.
+
+    The solvers pair the two with `zip`, which stops at the shorter sequence, so a
+    mismatch used to be absorbed in silence: six scores against four classes simply
+    discarded two scores and returned a threshold computed from the rest. That is a wrong
+    answer rather than a partial one, and nothing in the result hints at it.
+
+    Args:
+        scores: the values being split.
+        actual_classes: the matching ground-truth classes.
+
+    Returns:
+        None. This is a guard - it either passes silently or raises.
+
+    Raises:
+        ValueError: if the two differ in length.
+    """
+    if len(scores) != len(actual_classes):
+        raise ValueError(LENGTH_MISMATCH.format(scores=len(scores), classes=len(actual_classes)))
 
 
 def validate_actual_classes(actual_classes: Sequence[int]) -> None:
@@ -26,13 +55,20 @@ def validate_actual_classes(actual_classes: Sequence[int]) -> None:
         None. This is a guard - it either passes silently or raises.
 
     Raises:
-        ValueError: if the labels are empty, contain values other than -1 and 1, or
-            contain only one of the two classes.
+        ValueError: if the labels are empty, contain missing values, contain values other
+            than -1 and 1, or contain only one of the two classes.
     """
     present = set(actual_classes)
 
     if not present:
         raise ValueError(EMPTY_INPUT)
+
+    # A blank cell in a CSV arrives as NaN. Reporting it as an unrecognised label sends
+    # people to the 'labels' option, which cannot help - the value is absent, not
+    # differently encoded.
+    missing = sum(1 for value in actual_classes if isinstance(value, float) and math.isnan(value))
+    if missing:
+        raise ValueError(MISSING_LABELS.format(count=missing))
 
     unexpected = present - {NEGATIVE_LABEL, POSITIVE_LABEL}
     if unexpected:
