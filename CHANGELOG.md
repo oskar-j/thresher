@@ -47,11 +47,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Worst-case error over 20 seeds on a heavily skewed 2,000-row input fell from 0.452 to
   0.302, and mean error from 0.287 to 0.039.
 
+- `examples/benchmark.py`, which measures every algorithm against the exact optimum and
+  prints the comparison table in the README. The reference optimum is computed by sweeping
+  the sorted scores, independently of the algorithms being measured, and is checked against
+  brute force.
+
 ### Changed
 
 - Rewrote the README opening. The optical-illusion image and its caption are replaced with
   an explanation of what the project is for - that a `predict_proba` cut-off is a decision
   most pipelines leave at 0.5 by default rather than by measurement.
+- Added a table of contents to the README, and an "Algorithm scores" section comparing the
+  five algorithms on accuracy, runtime and complexity. `Implemented algorithms` is now a
+  top-level heading, so the sections nest properly under it.
 
 ## [0.3.0] - 2026-07-25
 
