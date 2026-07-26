@@ -40,6 +40,10 @@ uv run ruff format .
 uv run mypy                          # strict, over src/ and tests/
 ```
 
+**`--all-files` means all *tracked* files.** A new file that has not been `git add`ed yet is skipped in silence, so the run reports success while never looking at it. `git add` before trusting a green pre-commit run, or install the hook (`uv run pre-commit install`) so it happens on commit. CI checks out the committed tree and therefore does see the file, which is where the discrepancy surfaces.
+
+The mypy hook resolves its own environment from `additional_dependencies` in `.pre-commit-config.yaml`, independently of `pyproject.toml`. A new runtime dependency has to be added in both places: absent from the hook's list, an imported library's types vanish and every function touched by its decorators fails `strict` with "Untyped decorator". Locally `uv run mypy` will still pass, because that uses the project environment.
+
 `[tool.mypy]` deliberately sets no `python_version`. Pinning it to 3.10 makes mypy fail while parsing numpy's bundled stubs, which use 3.12+ `type` statements. The CI matrix is what actually proves 3.10 compatibility.
 
 ### Command line

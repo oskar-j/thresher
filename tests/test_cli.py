@@ -39,9 +39,7 @@ def test_reads_stdin(runner: CliRunner) -> None:
 
 
 @pytest.mark.parametrize("algorithm_name", ["ls", "grid", "sgrid", "gen", "sgd", "auto"])
-def test_every_algorithm_is_selectable(
-    runner: CliRunner, basic_csv: Path, algorithm_name: str
-) -> None:
+def test_every_algorithm_is_selectable(runner: CliRunner, basic_csv: Path, algorithm_name: str) -> None:
     result = runner.invoke(main, [str(basic_csv), "-a", algorithm_name])
 
     assert result.exit_code == 0, result.output
@@ -72,9 +70,7 @@ def test_columns_selected_by_name(runner: CliRunner, tmp_path: Path) -> None:
     path = tmp_path / "wide.csv"
     path.write_text("id,actual,note,score\n1,-1,a,0.1\n2,-1,b,0.3\n3,1,c,0.4\n4,1,d,0.7\n")
 
-    result = runner.invoke(
-        main, [str(path), "--score-column", "score", "--label-column", "actual"]
-    )
+    result = runner.invoke(main, [str(path), "--score-column", "score", "--label-column", "actual"])
 
     assert result.exit_code == 0
     assert 0.3 <= float(result.output.strip()) < 0.4
