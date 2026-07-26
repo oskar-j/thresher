@@ -15,7 +15,7 @@ from thresher.algs.grid import compute as grid_compute
 from thresher.algs.linear import compute as linear_compute
 from thresher.algs.sgd import compute as sgd_compute
 from thresher.backends import Backend, LocalBackend
-from thresher.exceptions import UNKNOWN_ALGORITHM
+from thresher.exceptions import AlgorithmNotWiredError
 from thresher.utils import validate_actual_classes, validate_lengths
 
 EXACT_ALGORITHM = algorithm.available_algorithms["exact"]
@@ -84,8 +84,9 @@ def run_computations(
     Raises:
         ValueError: if the labels are empty, single-class, outside (-1, 1), or a different
             length from the scores.
-        NotImplementedError: if `chosen_algorithm` has no dispatch branch here - which is
-            what happens when an algorithm is added to the registry but not wired up.
+        AlgorithmNotWiredError: if `chosen_algorithm` has no dispatch branch here - what
+            happens when an algorithm is added to the registry but not wired up. It is a
+            `NotImplementedError`.
     """
     validate_lengths(scores, actual_classes)
     validate_actual_classes(actual_classes)
@@ -114,4 +115,4 @@ def run_computations(
         )
     if chosen_algorithm == STOCHASTIC_GRID_SEARCH_ALGORITHM:
         return grid_compute.run_stoch(scores, actual_classes, verbose, progress_bar, alg_options)
-    raise NotImplementedError(UNKNOWN_ALGORITHM)
+    raise AlgorithmNotWiredError

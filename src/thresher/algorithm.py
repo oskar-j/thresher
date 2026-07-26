@@ -2,7 +2,7 @@
 
 from typing import NamedTuple
 
-from thresher.exceptions import UNKNOWN_ALGORITHM_NAME
+from thresher.exceptions import UnknownAlgorithmError
 
 
 class Algorithm(NamedTuple):
@@ -84,8 +84,8 @@ def retrieve_by_alias(name: str) -> Algorithm:
         The matching `Algorithm` from `available_algorithms`.
 
     Raises:
-        ValueError: if the name matches nothing. The message names the offending value
-            and lists the ids that would have worked.
+        UnknownAlgorithmError: if the name matches nothing. It is a `ValueError`, and
+            carries `.name` and `.available` alongside the message.
     """
     name = name.lower()
     try:
@@ -97,6 +97,4 @@ def retrieve_by_alias(name: str) -> Algorithm:
         except StopIteration:
             # 'next' on an exhausted generator raises StopIteration, which says nothing
             # about what went wrong and reads as a bug rather than a bad argument.
-            raise ValueError(
-                UNKNOWN_ALGORITHM_NAME.format(name=name, available=", ".join(sorted(available_algorithms)))
-            ) from None
+            raise UnknownAlgorithmError(name, available_algorithms) from None

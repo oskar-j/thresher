@@ -10,6 +10,7 @@ from collections.abc import Iterator, Sequence
 from functools import partial
 
 from thresher.backends import Backend, LocalBackend
+from thresher.exceptions import InsufficientDataError
 from thresher.utils import pairwise, print_progress_bar
 
 
@@ -122,7 +123,8 @@ def run(
         found wins.
 
     Raises:
-        ValueError: if fewer than two scores were given, leaving no midpoint to evaluate.
+        InsufficientDataError: if fewer than two scores were given, leaving no midpoint
+            to evaluate. It is a `ValueError`.
     """
     batch_size = len(scores)
 
@@ -139,7 +141,7 @@ def run(
     if not candidates:
         # 'pairwise' yields nothing for fewer than two scores, so there was no candidate
         # threshold to evaluate at all.
-        raise ValueError("At least two scores are needed to evaluate a threshold.")
+        raise InsufficientDataError("At least two scores are needed to evaluate a threshold.")
 
     if progress_bar:
         print_progress_bar(0, batch_size)

@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-07-26
+
+### Added
+
+- **An exception hierarchy.** `exceptions.py` held only message strings, so everything was
+  raised as a builtin and callers had to catch `ValueError` - which also swallows failures
+  from numpy, pandas or their own code. Every error now derives from `ThresherError`:
+
+  ```
+  ThresherError
+  ├── ConfigurationError      a name that does not exist          (ValueError)
+  │   ├── UnknownAlgorithmError
+  │   └── UnknownBackendError
+  ├── InvalidInputError       the data cannot be optimized over   (ValueError)
+  │   ├── EmptyInputError, LengthMismatchError, MissingLabelsError,
+  │   └── UnexpectedLabelsError, SingleClassError, InsufficientDataError
+  ├── LabelMappingError       the `labels` option cannot map      (TypeError)
+  ├── NotIterableError        arguments are not iterable          (AttributeError)
+  ├── BackendDependencyError  an optional dependency is missing   (ImportError)
+  ├── AlgorithmNotWiredError  a bug in this package               (NotImplementedError)
+  └── ShardMergeError         a bug in this package               (ValueError)
+  ```
+
+  **Every class also inherits the builtin it was previously raised as**, shown on the
+  right. That is what keeps this an addition rather than a breaking change: code catching
+  `ValueError`, `TypeError`, `AttributeError`, `ImportError` or `NotImplementedError`
+  behaves exactly as before - including this package's own command line, which catches
+  `ValueError` and `ImportError`. There are tests for both directions.
+
+- Errors carry their detail as attributes rather than only in prose:
+  `LengthMismatchError.score_count` and `.class_count`, `MissingLabelsError.count`,
+  `UnknownAlgorithmError.name` and `.available`, `UnknownBackendError.name` and
+  `.available`, `UnexpectedLabelsError.unexpected`, `SingleClassError.only`.
+
+### Changed
+
+- `NotIterableError` inherits `AttributeError` rather than `TypeError`, which would fit
+  the failure better. Earlier versions raised `AttributeError` here, and changing it would
+  break existing `except` clauses for no practical gain.
+- The message templates remain importable module constants. They define the wording, the
+  classes format them, and they were importable before the classes existed.
+
 ## [0.4.4] - 2026-07-26
 
 Clears the outstanding entries from `CLAUDE.md`'s known issues, ahead of `0.5.0`.
@@ -485,7 +527,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.4.5...HEAD
+[0.4.5]: https://github.com/oskar-j/thresher/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/oskar-j/thresher/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/oskar-j/thresher/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/oskar-j/thresher/compare/v0.4.1...v0.4.2

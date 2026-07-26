@@ -8,6 +8,7 @@ from typing import Any
 
 from thresher.backends.base import Backend
 from thresher.backends.local import LocalBackend
+from thresher.exceptions import UnknownBackendError
 
 AVAILABLE_BACKENDS = ("local", "ray")
 
@@ -23,9 +24,9 @@ def get_backend(backend: Any) -> Backend:
         The backend to use.
 
     Raises:
-        ValueError: if the name is not recognised.
-        ImportError: if `'ray'` was asked for and Ray is not installed. The message says
-            how to install it.
+        UnknownBackendError: if the name is not recognised. It is a `ValueError`.
+        BackendDependencyError: if `'ray'` was asked for and Ray is not installed. It is
+            an `ImportError`, and the message says how to install it.
     """
     if not isinstance(backend, str):
         # Already a backend instance; trust the protocol.
@@ -39,7 +40,7 @@ def get_backend(backend: Any) -> Backend:
 
         return RayBackend()
 
-    raise ValueError(f"Unknown backend {backend!r}. Available backends are: {', '.join(AVAILABLE_BACKENDS)}.")
+    raise UnknownBackendError(backend, AVAILABLE_BACKENDS)
 
 
 __all__ = ["AVAILABLE_BACKENDS", "Backend", "LocalBackend", "get_backend"]
