@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-26
+
+### Added
+
+- **`exact`, an exact algorithm in O(n log n)**, and the new default. It returns the best
+  threshold that exists, not an approximation, and does so faster than any of the
+  approximations it replaces.
+
+  Linear search is O(n²) because it recomputes the whole confusion matrix for each of the
+  n-1 candidate thresholds. That work is almost all redundant: moving the threshold past a
+  single sample changes the number of correct predictions by exactly one, in a direction
+  fixed by that sample's class. Sorting once and sweeping while carrying running counts
+  therefore costs O(n log n), dominated by the sort:
+
+  ```
+  correct(k) = (negatives among the first k) + (positives among the remaining n - k)
+  ```
+
+  This is the standard exact splitter for a decision-stump threshold, and the same linear
+  scan used to generate an ROC curve - Fawcett, "An introduction to ROC analysis" (Pattern
+  Recognition Letters, 2006), and Google's decision forests documentation, which gives the
+  same O(n log n) bound "because of the sorting of the feature values". Runs of equal
+  scores are indivisible and are stepped over whole, the tie-handling point Fawcett makes.
+
+  Measured against linear search on the same inputs:
+
+  | rows | `exact` | `ls` | speedup |
+  |---|---|---|---|
+  | 1,000 | 0.6 ms | 65 ms | 104× |
+  | 4,000 | 2.2 ms | 957 ms | 431× |
+  | 16,000 | 12 ms | 16,536 ms | 1,358× |
+
+  `exact` doubles in cost when the input doubles; `ls` quadruples, as O(n²) requires, so
+  the gap keeps widening.
+
+  It is also marginally *more* accurate than linear search. `ls` only considers midpoints
+  between adjacent scores, so it cannot express the "classify everything as negative"
+  split; the sweep reaches it at `max(scores)`. Over 3,000 randomised inputs with
+  duplicates, ties and inverted labels, `exact` matched the brute-force optimum every time
+  and beat `ls` in 287 of them.
+
+### Changed
+
+- **The oracle now always selects `exact`.** It previously routed on input size - linear
+  search below 1,000 rows, grid search below 50,000, stochastic gradient descent above
+  that - because the only exact algorithm was O(n²) and stopped being affordable. That
+  trade-off no longer exists. Callers who relied on the default choosing a particular
+  algorithm for a particular size will see a different, and better, one; select by name to
+  pin the old behaviour.
+- `Algorithm.data_vol_thresh` is now advisory. It records where each of the older
+  algorithms stops being a sensible manual choice, and is no longer read for routing.
+
 ## [0.3.2] - 2026-07-26
 
 ### Added
@@ -295,7 +347,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/oskar-j/thresher/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/oskar-j/thresher/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/oskar-j/thresher/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/oskar-j/thresher/compare/v0.2.3...v0.3.0

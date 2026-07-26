@@ -38,7 +38,7 @@ def test_reads_stdin(runner: CliRunner) -> None:
     assert 0.3 <= float(result.output.strip()) < 0.4
 
 
-@pytest.mark.parametrize("algorithm_name", ["ls", "grid", "sgrid", "gen", "sgd", "auto"])
+@pytest.mark.parametrize("algorithm_name", ["exact", "ls", "grid", "sgrid", "gen", "sgd", "auto"])
 def test_every_algorithm_is_selectable(runner: CliRunner, basic_csv: Path, algorithm_name: str) -> None:
     result = runner.invoke(main, [str(basic_csv), "-a", algorithm_name])
 

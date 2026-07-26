@@ -41,6 +41,7 @@ underneath — which of the five search algorithms runs, and how hard it looks.
 - [Project description](#project-description)
   - [An oracle mechanism](#an-oracle-mechanism)
 - [Implemented algorithms](#implemented-algorithms)
+  - [Exact sweep](#exact-sweep)
   - [Linear search](#linear-search)
   - [2-dim Stochastic Gradient Descent](#2-dim-stochastic-gradient-descent)
   - [Evolutionary algorithm](#evolutionary-algorithm)
@@ -85,13 +86,56 @@ returns:
 
 ### An oracle mechanism
 
-We implemented a meta-optimizer - an 'oracle' mechanism, which chooses a proper algorithm in regard to the provided data. This is the default behaviour, and can be controlled by changing the `algorithm` param of the `Thresher` constructor. See the source code of [oracle.py](https://github.com/oskar-j/thresher/blob/main/thresher/oracle.py) and [interface.py](https://github.com/oskar-j/thresher/blob/main/thresher/interface.py) for more details.
+We implemented a meta-optimizer - an 'oracle' mechanism, which chooses the algorithm for you. This is the default behaviour, and can be controlled by changing the `algorithm` param of the `Thresher` constructor. See the source code of [oracle.py](https://github.com/oskar-j/thresher/blob/main/src/thresher/oracle.py) and [interface.py](https://github.com/oskar-j/thresher/blob/main/src/thresher/interface.py) for more details.
+
+Since `0.4.0` it always chooses [Exact sweep](#exact-sweep), and the choice is no longer
+interesting. It used to route by input size - linear search below 1,000 rows, grid search
+below 50,000, stochastic gradient descent above that - because the only exact algorithm
+was O(n²) and stopped being affordable. Exact sweep is exact at *every* size and cheaper
+than the approximations it replaced, so there is nothing left to trade off. The other
+algorithms remain available by name.
 
 ## Implemented algorithms
 
+### Exact sweep
+
+**The default, and the one you want.** Added in version `0.4.0`. It returns the best
+threshold that exists - not an approximation - in `O(n log n)`.
+
+The insight is that linear search does the same work over and over. Moving a threshold
+past one sample changes the number of correct predictions by exactly one, in a direction
+fixed by that sample's class, so there is no need to rescore the whole dataset for every
+candidate. Sort the samples once, then sweep through them keeping running counts:
+
+```
+correct(k) = (negatives among the first k) + (positives among the remaining n - k)
+```
+
+Both terms are running totals, so each candidate costs constant time and the sort is the
+only real expense.
+
+This is the standard exact splitter used to pick a decision-stump threshold, and the same
+linear scan that generates an ROC curve - see Fawcett, _An introduction to ROC analysis_
+(Pattern Recognition Letters, 2006), and Google's
+[decision forests documentation](https://developers.google.com/machine-learning/decision-forests/binary-classification),
+which gives the same `O(n log n)` bound "because of the sorting of the feature values".
+
+It has no parameters. There is no accuracy left to trade for speed.
+
+Compared with linear search, which it supersedes, it is exact in the same sense and
+strictly faster - by 104× at 1,000 rows and 1,358× at 16,000, a gap that widens with every
+row. It is also *slightly more accurate*: linear search only ever considers the midpoints
+between adjacent scores, so it cannot express the "classify everything as negative" split,
+which the sweep reaches for free at `max(scores)`. On randomised inputs that mattered in
+about 10% of cases.
+
 ### Linear search
 
-This is the most basic, iterative approach. Recommended for smaller datasets. For every _threshold_ present in the input (in the _scores_ list), we evaluate it by calculating the exact accuracy of _split_ produced by such threshold. Then, return the threshold which produce the most accurate split.
+Superseded by [Exact sweep](#exact-sweep), which returns the same answer - or a
+marginally better one - in a fraction of the time. Kept for comparison and for its
+multiprocessing option.
+
+This is the most basic, iterative approach. For every _threshold_ present in the input (in the _scores_ list), we evaluate it by calculating the exact accuracy of _split_ produced by such threshold. Then, return the threshold which produce the most accurate split.
 
 List of parameters to customize:
 * `n_jobs` (default: 1) - set to `-1` for using all available processors except one; any value of `2` or more
@@ -152,7 +196,7 @@ List of parameters to customize:
 
 ## Algorithm scores
 
-How the five compare on 2,000 rows, averaged over 5 seeds. Accuracy is relative to the
+How the six compare on 2,000 rows, averaged over 5 seeds. Accuracy is relative to the
 **exact** optimum — the best accuracy any single threshold could reach on that dataset,
 computed independently by sweeping the sorted scores rather than by asking one of the
 algorithms under test. 100% therefore means "found a cut-off as good as the best one that
@@ -160,41 +204,48 @@ exists", not merely "did well".
 
 | Algorithm | Separable | Overlapping | Imbalanced | Time | Complexity |
 |---|---|---|---|---|---|
-| `ls` | 100.00% | 100.00% | 100.00% | 252 ms | O(n²) |
+| `exact` | **100.00%** | **100.00%** | **100.00%** | **1 ms** | **O(n log n)** |
+| `ls` | 100.00% | 100.00% | 100.00% | 266 ms | O(n²) |
 | `grid` | 99.82% | 99.98% | 100.00% | 18 ms | O(c·n) |
 | `sgrid` | 99.57% | 97.84% | 99.70% | 1 ms | O(c·r·n) |
-| `gen` | 99.62% | 98.23% | 88.64% | 110 ms | O(e·r·n) |
-| `sgd` | 99.54% | 97.01% | 88.37% | 8 ms | O(i·r·n) |
+| `gen` | 99.62% | 98.23% | 88.64% | 117 ms | O(e·r·n) |
+| `sgd` | 99.54% | 97.01% | 88.37% | 12 ms | O(i·r·n) |
 
 Where _n_ is the number of scores, _c_ the grid candidates (`10**no_of_decimal_places + 1`,
 so 101 by default), _r_ the `stoch_ratio` sample fraction, _e_ the genetic evaluations
 (`population_size × number_of_generations × number_of_iterations`) and _i_ the sgd steps
 (at most `num_of_iters`).
 
-Only linear search grows with the *square* of the input, because it scores each of the
-n-1 candidate midpoints against all n samples. Every other algorithm takes its candidate
-count from its own parameters rather than from n, which is what keeps it linear — and what
-the measured timings show:
+The top row is the short version of the whole table: **exact accuracy, at the lowest cost
+of anything here**. Every other algorithm exists because, before `0.4.0`, exactness meant
+paying `O(n²)` for it.
+
+The growth rates are why. Linear search rescores all n samples for each of n-1 candidates;
+the exact sweep sorts once and never rescores anything:
 
 | Algorithm | n=1,000 | n=4,000 | n=16,000 | growth per 4× |
 |---|---|---|---|---|
-| `ls` | 57 ms | 944 ms | 17,796 ms | ~16× |
+| `exact` | **0.6 ms** | **2.2 ms** | **12 ms** | **~4× (linear-ish)** |
+| `ls` | 57 ms | 944 ms | 17,796 ms | ~16× (quadratic) |
 | `grid` | 9 ms | 38 ms | 161 ms | ~4× |
 | `sgrid` | <1 ms | 2 ms | 9 ms | ~4× |
 | `gen` | 60 ms | 198 ms | 855 ms | ~4× |
 | `sgd` | 5 ms | 18 ms | 67 ms | ~4× |
 
-Three things worth reading out of this:
+At 16,000 rows that is 12 ms against 18 seconds — roughly 1,400×, and the gap widens with
+every row, because one algorithm is linear-ish and the other is quadratic.
 
-- **Linear search is exact**, and on small data it is cheap enough that nothing else is
-  worth using. By 16,000 rows it already costs 18 seconds, and it is quadratic, so it only
-  gets worse from there. That is why the oracle stops choosing it above 1,000 rows.
-- **Grid search is the sweet spot** — within 0.2% of exact on every dataset here, at a
-  fraction of the cost. `sgrid` gives up a little accuracy for another ~20× speedup.
+What to take from this:
+
+- **Use `exact` unless you have a specific reason not to.** It is the default, it is the
+  best answer available, and it is the cheapest way to get it.
+- **The approximations are now strictly dominated**: slower *and* less accurate than
+  `exact`. They stay selectable, and remain interesting if you want to watch how a
+  particular search behaves, but there is no longer an accuracy/speed trade to make.
 - **`gen` and `sgd` struggle when one class is rare.** Both read only a small random
   subsample per evaluation, and the rarer the minority class, the less any subsample says
-  about where the boundary lies. Prefer grid search on imbalanced data if you can afford
-  it, or raise `stoch_ratio` for `gen`.
+  about where the boundary lies. That weakness was the strongest argument for having an
+  exact algorithm which stays cheap at scale.
 
 Timings come from one laptop and are only meaningful relative to one another. Reproduce
 the whole table with:

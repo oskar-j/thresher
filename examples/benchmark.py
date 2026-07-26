@@ -90,7 +90,7 @@ DATASETS: dict[str, Callable[[int, int], Dataset]] = {
     "Imbalanced": imbalanced,
 }
 
-ALGORITHMS = ["ls", "grid", "sgrid", "gen", "sgd"]
+ALGORITHMS = ["exact", "ls", "grid", "sgrid", "gen", "sgd"]
 
 # Cost of a run, in the number of (score, class) pairs examined.
 #
@@ -100,10 +100,13 @@ ALGORITHMS = ["ls", "grid", "sgrid", "gen", "sgd"]
 #   e  genetic evaluations, population_size * number_of_generations * number_of_iterations
 #   i  sgd steps, at most num_of_iters
 #
-# Only 'ls' grows with the square of the input: it scores each of the n-1 candidate
-# midpoints against all n samples. For every other algorithm the candidate count is set by
-# its parameters rather than by n, which leaves them linear.
+# 'exact' sorts once and sweeps, carrying running class counts, so it never rescores a
+# candidate - the sort is all it costs. 'ls' scores each of the n-1 candidate midpoints
+# against all n samples, which is the same search done the expensive way. For the
+# approximate algorithms the candidate count comes from their own parameters rather than
+# from n, which leaves them linear but inexact.
 COMPLEXITY = {
+    "exact": "O(n log n)",
     "ls": "O(n²)",
     "grid": "O(c·n)",
     "sgrid": "O(c·r·n)",

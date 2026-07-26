@@ -12,9 +12,11 @@ class Algorithm(NamedTuple):
         id: the canonical short name, and the key in `available_algorithms`.
         full_name: human-readable name, used in verbose output.
         synonyms: alternative names accepted by `retrieve_by_alias`.
-        data_vol_thresh: upper bound on input size for which the oracle prefers this
-            algorithm. This is live routing logic read by `run_oracle`, not documentation.
-            `None` means the algorithm is never chosen by a threshold comparison.
+        data_vol_thresh: advisory upper bound on the input size for which this algorithm
+            is a sensible manual choice. Since 0.4.0 the oracle no longer routes on it -
+            `exact` is both exact and cheaper than every alternative, so there is nothing
+            left to trade off - but it still records where each of the others stops being
+            practical. `None` means no particular ceiling.
     """
 
     id: str
@@ -29,6 +31,12 @@ available_algorithms: dict[str, Algorithm] = {
         synonyms=["default", "default_heuristics"],
         data_vol_thresh=None,
         full_name="Default heuristics",
+    ),
+    "exact": Algorithm(
+        id="exact",
+        synonyms=["sweep", "exact_sweep", "sorted_sweep"],
+        data_vol_thresh=None,
+        full_name="Exact sweep",
     ),
     "ls": Algorithm(
         id="ls",
