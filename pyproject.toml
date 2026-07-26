@@ -1,6 +1,6 @@
 [project]
 name = "thresher-py"
-version = "0.4.1"
+version = "0.4.2"
 description = "Find threshold for fine-tuning output from predict_proba"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -25,6 +25,11 @@ dependencies = ["numpy", "pandas", "click>=8.0"]
 [project.scripts]
 thresher = "thresher.cli:main"
 
+[project.optional-dependencies]
+# Ray publishes wheels for Linux (x86_64 and aarch64) and Apple Silicon only - there is no
+# macOS x86_64 wheel, so `pip install thresher-py[ray]` cannot work on an Intel Mac.
+ray = ["ray>=2.9"]
+
 [project.urls]
 Homepage = "https://github.com/oskar-j/thresher"
 Repository = "https://github.com/oskar-j/thresher"
@@ -39,6 +44,10 @@ dev = [
     "ruff",
     "pre-commit",
     "pandas-stubs",
+    # Same wheel gap as above. The marker keeps `uv sync --group dev` working on an Intel
+    # Mac; the Ray tests skip themselves when the import fails, and CI runs on Linux where
+    # Ray installs, so they are exercised for real there.
+    "ray>=2.9; sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
 ]
 
 [build-system]

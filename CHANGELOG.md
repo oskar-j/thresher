@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-07-26
+
+### Added
+
+- **A Ray backend**, so the same computation can be spread over a
+  [Ray](https://github.com/ray-project/ray) cluster instead of running in one process.
+  Install with `pip install 'thresher-py[ray]'` and select with `Thresher(backend="ray")`
+  or `thresher --backend ray`. The default is unchanged and Ray is not required.
+
+  The work is a map-reduce: the data is sharded once into Ray's object store, each worker
+  counts its own shard, and the driver adds the partial counts together. `exact`, `ls` and
+  `grid` are distributed this way. `sgrid` and `gen` are not - each of their evaluations
+  reads its own random subsample, so sharding would change which samples are drawn and
+  therefore the result - and `sgd` is a sequential walk with nothing to parallelise. All
+  three still run under `backend='ray'`, just in-process.
+
+  **A backend changes where the work happens, never the answer.** Both map steps are plain
+  functions shared verbatim: the Ray backend ships them to workers rather than
+  reimplementing them, and the reduce steps are addition, which is order-independent. Tests
+  assert the two backends return *identical* results, not merely close ones, including on
+  data full of duplicates and ties.
+
+- `backend` option on `Thresher`, and `--backend` on the CLI. Accepts a name or a
+  configured backend instance, so sharding can be tuned with
+  `RayBackend(num_shards=16)`. An unknown name, or a missing Ray, is reported when the
+  object is built rather than partway through a run.
+
+### Changed
+
+- `exact`, `ls` and `grid` now score their candidates through the backend rather than in a
+  local loop. Results are unchanged - the existing brute-force and parity tests cover this
+  - but with `progress_bar=True` the bar for `ls` and `grid` now brackets the work instead
+  of advancing through it, since candidates are scored in one batch.
+- For `ls`, a non-local backend takes precedence over the `n_jobs` multiprocessing option,
+  which predates backends and would only contend with a cluster for cores.
+
 ## [0.4.1] - 2026-07-26
 
 ### Fixed
@@ -386,7 +422,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/oskar-j/thresher/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/oskar-j/thresher/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/oskar-j/thresher/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/oskar-j/thresher/compare/v0.3.1...v0.3.2

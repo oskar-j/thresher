@@ -14,6 +14,7 @@ from thresher.algs.genetic import compute as gen_compute
 from thresher.algs.grid import compute as grid_compute
 from thresher.algs.linear import compute as linear_compute
 from thresher.algs.sgd import compute as sgd_compute
+from thresher.backends import Backend, LocalBackend
 from thresher.exceptions import UNKNOWN_ALGORITHM
 from thresher.utils import validate_actual_classes
 
@@ -57,6 +58,7 @@ def run_computations(
     progress_bar: bool,
     allow_parallel: bool,
     alg_options: Mapping[str, Any],
+    backend: Backend | None = None,
 ) -> float:
     """Validate the labels, then run the chosen algorithm.
 
@@ -71,6 +73,10 @@ def run_computations(
             when `alg_options` also carries an `n_jobs` other than 1.
         alg_options: the user's `algorithm_params`. Each solver reads the keys it knows
             and silently ignores the rest.
+        backend: where the counting happens. `exact`, `ls` and `grid` accept it; the
+            stochastic and sequential solvers do not, because distributing them would
+            change their sampling and so their answers. They run in-process whatever is
+            passed.
 
     Returns:
         The threshold chosen by the algorithm.
@@ -85,18 +91,25 @@ def run_computations(
     if verbose:
         print(f"Executing the {chosen_algorithm.full_name} algorithm... please wait for the result.")
 
+    resolved_backend = backend or LocalBackend()
+
     if chosen_algorithm == EXACT_ALGORITHM:
-        return exact_compute.run(scores, actual_classes, verbose, progress_bar, alg_options)
+        return exact_compute.run(scores, actual_classes, verbose, progress_bar, alg_options, resolved_backend)
     if chosen_algorithm == LINEAR_ALGORITHM:
-        if allow_parallel and ("n_jobs" in alg_options) and (alg_options["n_jobs"] != 1):
+        # An explicit n_jobs asks for local multiprocessing, which predates backends and
+        # would only contend with a cluster, so a non-local backend takes precedence.
+        wants_processes = allow_parallel and ("n_jobs" in alg_options) and (alg_options["n_jobs"] != 1)
+        if wants_processes and resolved_backend.name == "local":
             return linear_compute.run_parallel(scores, actual_classes, verbose, alg_options["n_jobs"])
-        return linear_compute.run(scores, actual_classes, verbose, progress_bar)
+        return linear_compute.run(scores, actual_classes, verbose, progress_bar, resolved_backend)
     if chosen_algorithm == STOCHASTIC_GRADIENT_DESCENT:
         return sgd_compute.run(scores, actual_classes, verbose, progress_bar, alg_options)
     if chosen_algorithm == GENETIC_ALGORITHM:
         return gen_compute.run(scores, actual_classes, verbose, progress_bar, alg_options)
     if chosen_algorithm == GRID_SEARCH_ALGORITHM:
-        return grid_compute.run(scores, actual_classes, verbose, progress_bar, alg_options)
+        return grid_compute.run(
+            scores, actual_classes, verbose, progress_bar, alg_options, backend=resolved_backend
+        )
     if chosen_algorithm == STOCHASTIC_GRID_SEARCH_ALGORITHM:
         return grid_compute.run_stoch(scores, actual_classes, verbose, progress_bar, alg_options)
     raise NotImplementedError(UNKNOWN_ALGORITHM)

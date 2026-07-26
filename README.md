@@ -57,6 +57,7 @@ underneath — which of the five search algorithms runs, and how hard it looks.
   - [Control parameters for the algorithms](#control-parameters-for-the-algorithms)
 - [Sample usage](#sample-usage)
 - [Command line](#command-line)
+- [Running on Ray](#running-on-ray)
 - [Performance tests](#performance-tests)
 - [Future work](#future-work)
 
@@ -430,6 +431,72 @@ thresher scores.csv -a ls -p n_jobs=4                     # pass algorithm param
 documents every flag. Errors are reported in command-line terms rather than as Python
 tracebacks, and exit codes follow the usual convention: `2` for a usage mistake, `1` when
 the data itself cannot be optimized.
+
+## Running on Ray
+
+Thresher runs in two modes. By default everything happens in your process, exactly as it
+always has. Pass `backend='ray'` and the counting is spread over a
+[Ray](https://github.com/ray-project/ray) cluster instead:
+
+```
+pip install 'thresher-py[ray]'
+```
+
+```python
+from thresher import Thresher
+
+Thresher(backend="ray").optimize_threshold(scores, actual_classes)
+```
+
+or from the terminal:
+
+```
+thresher big.csv --backend ray
+```
+
+If you have already called `ray.init(address=...)`, Thresher joins that cluster. If you
+have not, Ray starts a local one.
+
+**A backend changes where the work happens, never the answer.** The map and reduce steps
+are the same functions in both modes — the Ray backend ships them to workers rather than
+reimplementing them — and there are tests asserting the two backends return *identical*
+results, not merely close ones, including on data full of duplicates and ties.
+
+### What gets distributed
+
+The work is a map-reduce: shard the data once, count on each shard, add the partial counts
+together.
+
+| Algorithm | On Ray | Why |
+|---|---|---|
+| `exact` | **yes** | Needs only the class counts at each distinct score, so the per-row work shards cleanly and the driver is left with one pass over the distinct scores |
+| `ls` | **yes** | "Score these candidates, keep the best" — each shard tallies every candidate, and the tallies add up |
+| `grid` | **yes** | Same shape as `ls`, with candidates from the grid rather than the data |
+| `sgrid`, `gen` | no | Each evaluation reads its own random subsample. Sharding would change which samples are drawn, and so the result |
+| `sgd` | no | A sequential walk — each step depends on the one before it, so there is nothing to run in parallel |
+
+The last three still work under `backend='ray'`; they simply run in-process. Nothing
+silently changes its answer to become distributable.
+
+### When it is worth it
+
+Not for small data. Scheduling a shard costs far more than counting a few thousand rows,
+so the backend keeps shards at 5,000 rows or more and will happily use a single shard for
+a small input. Ray earns its keep when the data is large, when it already lives in a Ray
+cluster, or when you are calling Thresher from inside a Ray application and want it to use
+the resources you have.
+
+For finer control, pass a configured backend instead of a name:
+
+```python
+from thresher.backends.ray_backend import RayBackend
+
+Thresher(backend=RayBackend(num_shards=16)).optimize_threshold(scores, actual_classes)
+```
+
+> [!NOTE]
+> Ray publishes wheels for Linux and Apple Silicon, but **not for macOS x86_64** — the
+> `[ray]` extra cannot be installed on an Intel Mac. Use the default backend there.
 
 ## Performance tests
 

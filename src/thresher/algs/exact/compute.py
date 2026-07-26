@@ -28,7 +28,8 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from thresher.utils import POSITIVE_LABEL, print_progress_bar
+from thresher.backends import Backend, LocalBackend
+from thresher.utils import print_progress_bar
 
 
 def run(
@@ -37,6 +38,7 @@ def run(
     verbose: bool,
     progress_bar: bool,
     alg_options: Mapping[str, Any],
+    backend: Backend | None = None,
 ) -> float:
     """Find the threshold with the highest accuracy, exactly.
 
@@ -48,6 +50,9 @@ def run(
         alg_options: accepted for signature compatibility with the other solvers. This
             algorithm has nothing to tune - it is exact, so there is no accuracy to trade
             against speed.
+        backend: where the counting happens. Defaults to in-process. Only the counting is
+            distributed; the sweep over distinct scores is trivial by comparison and stays
+            on the driver.
 
     Returns:
         A threshold yielding the highest achievable fraction of correctly classified
@@ -66,46 +71,42 @@ def run(
     if not scores:
         raise ValueError("At least one score is needed to evaluate a threshold.")
 
-    # One sort, and the sweep below never looks back.
-    paired = sorted(zip(scores, actual_classes, strict=False))
-    total = len(paired)
-    total_positive = sum(1 for _, actual in paired if actual == POSITIVE_LABEL)
+    # The sweep needs only the class counts at each distinct score, never the samples
+    # themselves - which is precisely what makes it distributable.
+    counts = (backend or LocalBackend()).class_counts_by_score(scores, actual_classes)
+    ordered = sorted(counts)
+    distinct = len(ordered)
+    total_positive = sum(positives for _, positives in counts.values())
 
     if verbose:
-        print(f"Sweeping {total} sorted samples for the exact optimum.")
+        print(f"Sweeping {distinct} distinct scores from {len(scores)} samples for the exact optimum.")
 
     negatives_behind = 0
     positives_behind = 0
     best_correct = -1
-    best_threshold = float(paired[-1][0])
+    best_threshold = float(ordered[-1])
 
-    for position in range(1, total + 1):
-        score, actual = paired[position - 1]
-        if actual == POSITIVE_LABEL:
-            positives_behind += 1
-        else:
-            negatives_behind += 1
+    for index, score in enumerate(ordered):
+        negatives_here, positives_here = counts[score]
+        negatives_behind += negatives_here
+        positives_behind += positives_here
 
         if progress_bar:
-            print_progress_bar(position, total)
+            print_progress_bar(index + 1, distinct)
 
-        # A threshold can only sit *between* two different scores. Inside a run of equal
-        # scores there is nowhere to put one - those samples are indivisible, and Fawcett
-        # makes the same point about ties when generating an ROC curve.
-        if position < total and paired[position][0] == score:
-            continue
-
-        # Everything up to here is predicted negative, everything after it positive.
+        # Everything up to and including this score is predicted negative, everything
+        # above it positive. Runs of equal scores are indivisible, which is automatic
+        # here: they are one entry.
         correct = negatives_behind + (total_positive - positives_behind)
 
         if correct > best_correct:
             best_correct = correct
-            # Below the largest score, sit between the two samples being separated;
-            # at the largest score, sit on it, which predicts everything negative.
-            best_threshold = (score + paired[position][0]) / 2 if position < total else float(score)
+            # Below the largest score, sit between the two scores being separated; at the
+            # largest score, sit on it, which predicts everything negative.
+            best_threshold = (score + ordered[index + 1]) / 2 if index + 1 < distinct else float(score)
 
     if progress_bar:
-        print_progress_bar(total, total)
+        print_progress_bar(distinct, distinct)
 
     # The one split no threshold inside the data can express: everything classified
     # positive, which needs a threshold strictly below the smallest score. nextafter gives
@@ -114,9 +115,9 @@ def run(
     # threshold outside the input range is never returned merely to break a tie.
     if total_positive > best_correct:
         best_correct = total_positive
-        best_threshold = math.nextafter(paired[0][0], -math.inf)
+        best_threshold = math.nextafter(ordered[0], -math.inf)
 
     if verbose:
-        print(f"Best threshold {best_threshold} classifies {best_correct}/{total} correctly.")
+        print(f"Best threshold {best_threshold} classifies {best_correct}/{len(scores)} correctly.")
 
     return best_threshold
