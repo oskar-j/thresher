@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-07-26
+
+### Added
+
+- A `thresher` command-line interface, installed with the package. It reads a delimited
+  file (or stdin) holding one row per sample and prints the optimal threshold:
+
+  ```
+  $ thresher scores.csv
+  0.35
+  ```
+
+  Only the bare number goes to stdout, so the result pipes into another command without
+  anything to strip out; progress and errors go to stderr. Flags cover the usual shape
+  mismatches - `--labels` for classes that are not -1 and 1, `--sep` and `--no-header`,
+  `--score-column` and `--label-column` to select by name or index, `-a` to pick the
+  algorithm and `-p key=value` to pass its parameters. `--list-algorithms` prints the
+  algorithms with their aliases.
+
+  Library exceptions are rewritten for a terminal audience: a mistyped algorithm points at
+  `thresher --list-algorithms` rather than at `get_supported_algorithms()`, and unmapped
+  labels point at `--labels 0,1` rather than at `Thresher(labels=(0, 1))`. Exit codes
+  follow convention - 2 for a usage mistake, 1 when the data cannot be optimized.
+- `click` as a runtime dependency, for the above. It is a small pure-Python package next to
+  the existing numpy and pandas requirements, so the command works from a plain
+  `pip install thresher-py` rather than needing an extra.
+- Two more README badges: the supported Python versions and the licence. Both read from
+  PyPI metadata, so neither can drift out of date the way a hardcoded badge would.
+
+### Changed
+
+- The README's opening example imports the class directly - `from thresher import Thresher`
+  - rather than reaching through the module.
+
 ## [0.3.1] - 2026-07-25
 
 ### Fixed
@@ -261,7 +295,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/oskar-j/thresher/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/oskar-j/thresher/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/oskar-j/thresher/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/oskar-j/thresher/compare/v0.2.2...v0.2.3

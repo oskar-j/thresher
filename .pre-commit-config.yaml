@@ -40,7 +40,11 @@ repos:
     hooks:
       - id: mypy
         files: ^(src|tests)/
+        # This hook runs in its own environment, so anything the checked code imports has
+        # to be listed here as well as in pyproject.toml. Without click, its typed
+        # decorators read as untyped and every command in cli.py fails under strict.
         additional_dependencies:
+          - click
           - numpy
           - pandas-stubs
           - pytest
