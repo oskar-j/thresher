@@ -172,3 +172,116 @@ class TestErrors:
 
         assert result.exit_code == 2
         assert "two comma-separated" in result.output
+
+
+class TestOptionParsing:
+    """Values arrive as strings and have to be coerced to what the algorithms expect."""
+
+    @pytest.mark.parametrize(
+        ("pair", "expected"),
+        [
+            ("n_jobs=4", 4),
+            ("stoch_ratio=0.1", 0.1),
+            ("reshuffle=true", True),
+            ("reshuffle=False", False),
+            ("some_name=abc", "abc"),
+        ],
+    )
+    def test_param_values_are_coerced(self, pair: str, expected: object) -> None:
+        from thresher.cli import _parse_params
+
+        key = pair.split("=")[0]
+        parsed = _parse_params((pair,))
+
+        assert parsed[key] == expected
+        assert isinstance(parsed[key], type(expected))
+
+    def test_repeated_params_accumulate(self) -> None:
+        from thresher.cli import _parse_params
+
+        assert _parse_params(("a=1", "b=2.5")) == {"a": 1, "b": 2.5}
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [("0,1", (0, 1)), ("no,yes", ("no", "yes")), (" -1 , 1 ", (-1, 1))],
+    )
+    def test_labels_are_parsed_and_coerced(self, raw: str, expected: tuple[object, object]) -> None:
+        from thresher.cli import _parse_labels
+
+        assert _parse_labels(raw) == expected
+
+    def test_no_labels_option_means_none(self) -> None:
+        from thresher.cli import _parse_labels
+
+        assert _parse_labels(None) is None
+
+
+class TestColumnSelection:
+    def test_columns_selected_by_index(self, runner: CliRunner, tmp_path: Path) -> None:
+        path = tmp_path / "wide.csv"
+        path.write_text("id,actual,note,score\n1,-1,a,0.1\n2,-1,b,0.3\n3,1,c,0.4\n4,1,d,0.7\n")
+
+        result = runner.invoke(main, [str(path), "--score-column", "3", "--label-column", "1"])
+
+        assert result.exit_code == 0, result.output
+        assert 0.3 <= float(result.output.strip()) < 0.4
+
+    def test_string_labels_from_a_file(self, runner: CliRunner, tmp_path: Path) -> None:
+        path = tmp_path / "words.csv"
+        path.write_text("score,actual\n0.1,no\n0.3,no\n0.4,yes\n0.7,yes\n")
+
+        result = runner.invoke(main, [str(path), "--labels", "no,yes"])
+
+        assert result.exit_code == 0, result.output
+        assert 0.3 <= float(result.output.strip()) < 0.4
+
+
+class TestBackendOption:
+    def test_local_backend_flag(self, runner: CliRunner, basic_csv: Path) -> None:
+        result = runner.invoke(main, [str(basic_csv), "--backend", "local"])
+
+        assert result.exit_code == 0
+        assert 0.3 <= float(result.output.strip()) < 0.4
+
+    def test_ray_without_the_extra_explains_how_to_install_it(
+        self, runner: CliRunner, basic_csv: Path
+    ) -> None:
+        try:
+            import ray  # noqa: F401
+        except ImportError:
+            pass
+        else:
+            pytest.skip("Ray is installed, so this error path cannot be reached")
+
+        result = runner.invoke(main, [str(basic_csv), "--backend", "ray"])
+
+        assert result.exit_code == 1
+        assert "thresher-py[ray]" in result.output
+
+    def test_unknown_backend_is_rejected_by_the_parser(self, runner: CliRunner, basic_csv: Path) -> None:
+        result = runner.invoke(main, [str(basic_csv), "--backend", "nope"])
+
+        assert result.exit_code == 2
+        assert "local" in result.output and "ray" in result.output
+
+
+class TestOutputAndFailures:
+    def test_verbose_reports_the_row_count(self, runner: CliRunner, basic_csv: Path) -> None:
+        result = runner.invoke(main, [str(basic_csv), "--verbose"])
+
+        assert result.exit_code == 0
+        assert "Read 4 rows" in result.output
+
+    def test_unreadable_input_is_reported(self, runner: CliRunner, tmp_path: Path) -> None:
+        """A file with nothing in it at all, which pandas refuses outright.
+
+        Distinct from a header-only file, which parses fine into zero rows and is caught
+        later by the "no rows to optimize over" check.
+        """
+        path = tmp_path / "empty_file.csv"
+        path.write_text("")
+
+        result = runner.invoke(main, [str(path)])
+
+        assert result.exit_code == 1
+        assert "could not read" in result.output

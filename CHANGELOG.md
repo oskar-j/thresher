@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-07-26
+
+### Added
+
+- Test coverage is now measured and enforced. Branch coverage is on, the floor is 90%, and
+  CI applies it on every supported Python version - the `test` jobs are required checks on
+  `main`, so a pull request that drops below the floor cannot be merged. Coverage stands at
+  **95%**, and each job uploads its `coverage.xml` as an artefact.
+- `make cov` runs the tests with coverage and the same threshold CI uses.
+- A coverage badge. It states the enforced floor rather than a measured number, because
+  that is what can be guaranteed: CI makes the claim true on every merge, whereas a
+  hardcoded percentage would drift and a third-party service would read "unknown" until
+  someone linked the repository to it.
+- Tests for the parts the end-to-end suite reached around rather than through: the shared
+  helpers (`granularity_of_scores`, `calculate_range_mean`, `get_mean_value_for_class_pd`,
+  `pairwise`, `get_or_default`, `map_labels`, `print_progress_bar`, `stochastic_process`
+  in both of its modes), `process_batch` - which normally runs inside a worker process
+  where neither assertions nor coverage reach it - every `verbose` and `progress_bar`
+  reporting path, the CLI's value coercion and failure paths, and the dispatch guard that
+  fires when the algorithm registry and `run_computations` disagree.
+
+  One behaviour was pinned down in the process: `calculate_range_mean` emits two numpy
+  `RuntimeWarning`s and returns NaN when a class is absent. That is unreachable through
+  `optimize_threshold`, which rejects single-class input first, but reachable by calling
+  the helper directly.
+
 ## [0.4.2] - 2026-07-26
 
 ### Added
@@ -422,7 +448,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/oskar-j/thresher/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/oskar-j/thresher/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/oskar-j/thresher/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/oskar-j/thresher/compare/v0.3.2...v0.4.0

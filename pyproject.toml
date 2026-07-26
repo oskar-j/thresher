@@ -1,6 +1,6 @@
 [project]
 name = "thresher-py"
-version = "0.4.2"
+version = "0.4.3"
 description = "Find threshold for fine-tuning output from predict_proba"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -66,10 +66,26 @@ exclude = ["examples/performance_test/milion_samples.7z"]
 minversion = "7.0"
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config"
+# Coverage is opt-in via --cov so a plain `pytest` stays fast; CI always passes it.
 filterwarnings = [
     "error",
     # multiprocessing.Pool emits this on interpreter teardown in some CPython builds
     "default::ResourceWarning",
+]
+
+[tool.coverage.run]
+source = ["src/thresher"]
+branch = true
+
+[tool.coverage.report]
+# CI enforces this on every matrix job, so a pull request cannot lower coverage below it.
+fail_under = 90
+show_missing = true
+exclude_also = [
+    # Script entry points are exercised by running the command, not by importing it.
+    'if __name__ == .__main__.:',
+    # Protocol method bodies declare a signature and have nothing to run.
+    '^\s*\.\.\.$',
 ]
 
 [tool.ruff]

@@ -3,6 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/thresher-py.svg)](https://pypi.org/project/thresher-py/)
 [![Python versions](https://img.shields.io/pypi/pyversions/thresher-py.svg)](https://pypi.org/project/thresher-py/)
 [![Build](https://img.shields.io/github/actions/workflow/status/oskar-j/thresher/ci.yml?branch=main&label=build)](https://github.com/oskar-j/thresher/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-%E2%89%A5%2090%25-brightgreen)](https://github.com/oskar-j/thresher/actions/workflows/ci.yml)
 [![Downloads](https://img.shields.io/pepy/dt/thresher-py)](https://pepy.tech/project/thresher-py)
 [![Stars](https://img.shields.io/github/stars/oskar-j/thresher)](https://github.com/oskar-j/thresher/stargazers)
 [![License](https://img.shields.io/pypi/l/thresher-py.svg)](https://github.com/oskar-j/thresher/blob/main/LICENSE)
@@ -329,6 +330,21 @@ Prefer `make check` to running `pre-commit run --all-files` directly: that comma
 sees files git already tracks, so a newly created file is skipped in silence and the run
 reports success without having looked at it. `make check` makes new files visible to the
 hooks first.
+
+#### Coverage
+
+```
+make cov
+```
+
+Test coverage is measured with branch coverage on, and **CI enforces a floor of 90% on
+every supported Python version**. A pull request that drops below it fails the `test`
+jobs, which are required checks on `main` — so the badge above states what is actually
+guaranteed rather than a number that could drift.
+
+One caveat when running it locally: Ray cannot be installed on macOS x86_64, so
+`backends/ray_backend.py` is uncovered there and the local figure understates what CI
+measures.
 
 ### Project layout
 

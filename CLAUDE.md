@@ -31,6 +31,16 @@ uv run --isolated --python 3.14 --group dev pytest   # a specific interpreter
 
 Several solvers are randomized internally, so returned thresholds vary between runs and the assertions check a band rather than an exact value. Outcomes are nonetheless stable: if a stochastic test starts failing intermittently, suspect a fitness/selection regression rather than a too-tight assertion.
 
+### Coverage
+
+```bash
+make cov                             # tests + coverage, same threshold as CI
+```
+
+Branch coverage, floor of 90%, set by `fail_under` in `[tool.coverage.report]` and applied by CI on every matrix job. The `test` jobs are required checks, so coverage cannot regress through a merge. Currently 95%.
+
+The local figure understates CI's: Ray is uninstallable on macOS x86_64, so `backends/ray_backend.py` reads ~32% there against near-full coverage on CI. Do not "fix" that by lowering the floor.
+
 ### Lint, format and types
 
 ```bash

@@ -20,6 +20,8 @@ Oskar Jarczyk (`oskar.jarczyk@gmail.com`)
 * Set up with `make install`, which installs the dependencies and the git pre-commit hook
 * Please make sure the full suite passes: `make test`
 * Run everything CI runs before pushing: `make check`
+* Coverage must stay at or above 90%: `make cov`. CI enforces this on every supported
+  Python version, so a pull request that drops below it cannot be merged
 
 Prefer `make check` over calling `pre-commit run --all-files` yourself. That command only
 sees files git already tracks, so a file you have just created is skipped without comment
