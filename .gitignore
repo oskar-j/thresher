@@ -131,3 +131,6 @@ dmypy.json
 # Editor state, not project configuration
 .vscode/
 .idea/
+
+# Built documentation
+site/

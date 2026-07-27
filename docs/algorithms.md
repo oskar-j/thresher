@@ -1,0 +1,151 @@
+# Algorithms
+
+Six are available. The first is exact and the default; the rest predate it and approximate.
+
+```python
+Thresher(algorithm="grid").optimize_threshold(scores, actual_classes)
+```
+
+`'auto'`, `'default'` and `'default_heuristics'` are accepted as synonyms for the default.
+`Thresher.get_supported_algorithms()` lists the ids at runtime, and each has synonyms —
+`thresher --list-algorithms` shows them all.
+
+## How they compare
+
+On 2,000 rows, averaged over 5 seeds. Accuracy is relative to the **exact** optimum, computed
+independently by sweeping the sorted scores rather than by asking one of the algorithms
+under test, so 100% means "found a cut-off as good as the best one that exists".
+
+| Algorithm | Separable | Overlapping | Imbalanced | Time | Complexity | Memory |
+|---|---|---|---|---|---|---|
+| `exact` | **100.00%** | **100.00%** | **100.00%** | **1 ms** | **O(n log n)** | **O(d)** |
+| `ls` | 100.00% | 100.00% | 100.00% | 266 ms | O(n²) | O(n) |
+| `grid` | 99.82% | 99.98% | 100.00% | 18 ms | O(c·n) | O(c) |
+| `sgrid` | 99.57% | 97.84% | 99.70% | 1 ms | O(c·r·n) | O(n) |
+| `gen` | 99.62% | 98.23% | 88.64% | 117 ms | O(e·r·n) | O(r·n) |
+| `sgd` | 99.54% | 97.01% | 88.37% | 12 ms | O(i·r·n) | O(r·n) |
+
+Where _n_ is the number of scores, _d_ the number of **distinct** scores, _c_ the grid
+candidates, _r_ the `stoch_ratio` sample fraction, _e_ the genetic evaluations and _i_ the
+sgd steps.
+
+Reproduce it with `uv run python examples/benchmark.py`.
+
+!!! tip "Use `exact` unless you have a reason not to"
+
+    It is the only exact algorithm here *and* the cheapest. The others are strictly
+    dominated on this evidence — they exist because exactness used to cost `O(n²)`.
+
+## Size guidance
+
+Each algorithm declares the input size beyond which it becomes slow, and logs a warning
+rather than making you wait to find out:
+
+```
+WARNING thresher.dispatch: Linear search is likely to be slow on 12,000 rows - it is
+usually comfortable up to about 10,000. The 'exact' algorithm is exact and O(n log n)...
+```
+
+| Algorithm | Comfortable up to | Why |
+|---|---|---|
+| `exact` | 10,000,000 | `O(n log n)` — the input runs out before the algorithm does |
+| `sgrid` | 10,000,000 | reads only `stoch_ratio` of the data per candidate |
+| `sgd` | 2,000,000 | linear in the sampled fraction |
+| `grid` | 1,000,000 | linear, with a fixed candidate count |
+| `gen` | 100,000 | linear, but thousands of evaluations per run |
+| `ls` | 10,000 | `O(n²)` — 0.9 s at 4,000 rows becomes 18 s at 16,000 |
+
+These are guidance rather than limits, measured on one laptop at roughly where a run passes
+ten seconds. Crossing one warns and continues. Silence it the ordinary way:
+
+```python
+import logging
+logging.getLogger("thresher").setLevel(logging.ERROR)
+```
+
+## Exact sweep
+
+`exact` — **the default.** Returns the best threshold that exists, in `O(n log n)`.
+
+Linear search is quadratic because it recomputes the whole confusion matrix for each
+candidate. That work is almost all redundant: moving the threshold past one sample changes
+the number of correct predictions by exactly one, in a direction fixed by that sample's
+class. Sort once, then sweep while carrying running counts:
+
+```
+correct(k) = (negatives among the first k) + (positives among the remaining n - k)
+```
+
+Both terms are running totals, so each candidate costs constant time and the sort is the
+only real expense.
+
+This is the standard exact splitter for a decision-stump threshold, and the same linear
+scan that generates an ROC curve — see Fawcett, *An introduction to ROC analysis* (Pattern
+Recognition Letters, 2006), and Google's
+[decision forests documentation](https://developers.google.com/machine-learning/decision-forests/binary-classification),
+which gives the same `O(n log n)` bound "because of the sorting of the feature values".
+
+It has no parameters. There is no accuracy left to trade for speed.
+
+## Linear search
+
+`ls` — exhaustive and exact, but `O(n²)`. Superseded by the exact sweep, which returns the
+same answer, or a marginally better one, far faster. Kept for comparison and for its
+multiprocessing option.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `n_jobs` | 1 | `-1` uses every processor bar one; 2 or more enables multiprocessing |
+
+## Grid search
+
+`grid` — evaluates every point on a fixed grid over `[0, 1]`. Cost depends on the grid
+resolution rather than the input size, and it is the only algorithm whose memory does not
+grow with the input.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `no_of_decimal_places` | 2 | grid resolution — `10**places + 1` candidates |
+
+## Stochastic grid search
+
+`sgrid` — the same grid, with each candidate scored against a random subsample.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `no_of_decimal_places` | 2 | grid resolution |
+| `stoch_ratio` | 0.05 | fraction of the data each candidate reads |
+| `reshuffle` | False | draw a fresh subsample per candidate instead of reusing one |
+
+## Evolutionary algorithm
+
+`gen` — evolves a population of candidate thresholds, scoring each against random
+subsamples, discarding the least fit and breeding replacements.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `population_size` | 30 | agents per generation |
+| `number_of_generations` | 20 | rounds of selection |
+| `number_of_iterations` | 10 | fitness samples per agent per generation |
+| `sus_factor` | 2 | how many of the least fit are left child-less |
+| `stoch_ratio` | 0.02 | fraction of the data each sample reads |
+| `mutation_chance` | 0.05 | probability one agent is nudged per generation |
+| `mutation_factor` | 0.10 | size of that nudge |
+
+## Stochastic gradient descent
+
+`sgd` — walks down the error curve from the mean of the scores, scoring each step against a
+random subsample. The least precise algorithm here, and least reliable when one class is
+rare, because then a small subsample says little about where the boundary lies.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `num_of_iters` | 200 | maximum steps |
+| `stop_thresh` | 0.001 | improvement below which a step counts as making no progress |
+| `stop_patience` | 3 | how many such steps in a row end the walk |
+| `alpha` | 0.01 | how quickly the step size decays |
+| `stoch_ratio` | 0.05 | fraction of the data each step reads |
+
+Raising `stoch_ratio` is the lever against the imbalance weakness. On 2,000 rows with 5%
+positives, going from `0.05` to `0.5` took mean error from `0.0394` to `0.0035` and the
+worst case from `0.302` to `0.013`, at the cost of reading ten times as much data per step.

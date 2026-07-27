@@ -1,29 +1,59 @@
-# Thresher documentation
+# Thresher
 
-Placeholder for the project documentation.
+**Your model gives you probabilities. Where you cut them is a decision — stop leaving it at 0.5.**
 
-`thresher` finds the threshold that maximizes classification accuracy for
-`predict_proba`-style scores, given the ground-truth labels:
+A classifier that outputs `predict_proba` hands you a number between 0 and 1. Turning that
+into an actual yes-or-no answer needs a cut-off, and almost every pipeline uses 0.5 —
+because it is the default, not because anyone measured it.
+
+The cut-off that actually maximizes accuracy depends on your data: how far the two classes
+overlap, how imbalanced they are, and how well your model is calibrated. It is rarely 0.5.
+When one class is rare it can be nowhere near it.
+
+Thresher measures it:
 
 ```python
-import thresher
+from thresher import Thresher
 
-t = thresher.Thresher()
-t.optimize_threshold([0.1, 0.3, 0.4, 0.7], [-1, -1, 1, 1])
+Thresher().optimize_threshold(scores, actual_classes)
 ```
 
-Until this section is filled in, the [README](../README.md) is the reference for
-installation, the available algorithms and their parameters, and
-[CHANGELOG.md](../CHANGELOG.md) records what changed in each release.
+Or from a terminal, without writing any Python:
 
-## Planned contents
+```console
+$ thresher scores.csv
+0.35
+```
 
-- Getting started
-- Choosing an algorithm, and how the oracle chooses one for you
-- Algorithm parameters
-- API reference
-- Performance notes
+## What you get
 
-## Layout
+<div class="grid cards" markdown>
 
-- `docs/assets/` — images and other media referenced from these pages.
+-   **Exact, not approximate**
+
+    The default algorithm returns the best threshold that exists — optimal over every
+    split a threshold can induce, verified against brute force.
+
+-   **And fast**
+
+    `O(n log n)`, which is roughly 1,400× quicker than the exhaustive search it replaced
+    at 16,000 rows, and the gap widens with every row.
+
+-   **Six algorithms**
+
+    The exact sweep plus five approximations, all selectable by name, with a
+    [measured comparison](algorithms.md#how-they-compare) of accuracy, speed and memory.
+
+-   **Scales out**
+
+    An optional [Ray backend](backends.md) spreads the counting over a cluster without
+    changing the answer.
+
+</div>
+
+## Where to go next
+
+- [Getting started](getting-started.md) — install it and find your first threshold
+- [Algorithms](algorithms.md) — what each one does, and which to choose
+- [Command line](cli.md) — the `thresher` command
+- [API reference](api/thresher.md) — every public class and function

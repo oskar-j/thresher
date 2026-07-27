@@ -2,7 +2,7 @@
 # make itself - the underlying commands are in CONTRIBUTING.md if you would rather run them
 # directly.
 
-.PHONY: help install check test cov fmt types bench build clean all
+.PHONY: help install check test cov fmt types bench build docs docs-serve clean all
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -41,11 +41,21 @@ fmt:  ## Format and auto-fix what can be fixed
 bench:  ## Regenerate the algorithm comparison table in the README
 	uv run python examples/benchmark.py
 
+docs:  ## Build the documentation site, exactly as CI does
+	@{ echo '<!-- Generated from CHANGELOG.md by the docs build; edit that file instead. -->'; \
+	   echo; cat CHANGELOG.md; } > docs/changelog.md
+	uv run --group docs mkdocs build --strict
+
+docs-serve:  ## Serve the documentation locally with live reload
+	@{ echo '<!-- Generated from CHANGELOG.md by the docs build; edit that file instead. -->'; \
+	   echo; cat CHANGELOG.md; } > docs/changelog.md
+	uv run --group docs mkdocs serve
+
 build:  ## Build the sdist and wheel
 	uv build
 
 clean:  ## Remove build artefacts and caches
-	rm -rf dist build .pytest_cache .ruff_cache .mypy_cache
+	rm -rf dist build site .pytest_cache .ruff_cache .mypy_cache
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +
 
 all: check test  ## Everything CI runs
