@@ -1,0 +1,94 @@
+site_name: Thresher
+site_description: Find the threshold that maximizes classification accuracy for predict_proba scores
+site_url: https://oskar-j.github.io/thresher/
+repo_url: https://github.com/oskar-j/thresher
+repo_name: oskar-j/thresher
+edit_uri: edit/main/docs/
+copyright: MIT licensed
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+    - toc.follow
+  palette:
+    # The docs follow the reader's system theme, like the published artifacts do.
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Algorithms: algorithms.md
+  - Command line: cli.md
+  - Running on Ray: backends.md
+  - Handling errors: errors.md
+  - API reference:
+      - Thresher: api/thresher.md
+      - Algorithms: api/algorithms.md
+      - Backends: api/backends.md
+      - Exceptions: api/exceptions.md
+      - Utilities: api/utils.md
+  - Changelog: changelog.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            # The package documents itself in Google style throughout, so the API pages
+            # are generated from the same docstrings the source carries.
+            docstring_style: google
+            docstring_section_style: table
+            show_source: true
+            show_root_heading: true
+            show_signature_annotations: true
+            separate_signature: true
+            signature_crossrefs: true
+            merge_init_into_class: true
+            members_order: source
+            filters: ["!^_"]
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/oskar-j/thresher
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/thresher-py/
+
+# A broken cross-reference or a page missing from the nav fails the build rather than
+# shipping a docs site with dead links in it.
+strict: true

@@ -1,6 +1,6 @@
 [project]
 name = "thresher-py"
-version = "0.5.0"
+version = "0.5.1"
 description = "Find threshold for fine-tuning output from predict_proba"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,6 +31,7 @@ thresher = "thresher.cli:main"
 ray = ["ray>=2.9"]
 
 [project.urls]
+Documentation = "https://oskar-j.github.io/thresher/"
 Homepage = "https://github.com/oskar-j/thresher"
 Repository = "https://github.com/oskar-j/thresher"
 Issues = "https://github.com/oskar-j/thresher/issues"
@@ -48,6 +49,12 @@ dev = [
     # Mac; the Ray tests skip themselves when the import fails, and CI runs on Linux where
     # Ray installs, so they are exercised for real there.
     "ray>=2.9; sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
+]
+# Kept out of `dev` because the docs toolchain is large and only the docs build needs it.
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.26",
 ]
 
 [build-system]

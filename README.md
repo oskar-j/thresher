@@ -4,6 +4,7 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/thresher-py.svg)](https://pypi.org/project/thresher-py/)
 [![Build](https://img.shields.io/github/actions/workflow/status/oskar-j/thresher/ci.yml?branch=main&label=build)](https://github.com/oskar-j/thresher/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-%E2%89%A5%2090%25-brightgreen)](https://github.com/oskar-j/thresher/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-oskar--j.github.io%2Fthresher-blue)](https://oskar-j.github.io/thresher/)
 [![Downloads](https://img.shields.io/pepy/dt/thresher-py)](https://pepy.tech/project/thresher-py)
 [![Stars](https://img.shields.io/github/stars/oskar-j/thresher)](https://github.com/oskar-j/thresher/stargazers)
 [![License](https://img.shields.io/pypi/l/thresher-py.svg)](https://github.com/oskar-j/thresher/blob/main/LICENSE)
@@ -35,7 +36,9 @@ thresher scores.csv
 ```
 
 That is the whole interface. Everything else in this README is about tuning what happens
-underneath — which of the five search algorithms runs, and how hard it looks.
+underneath — which of the six search algorithms runs, and how hard it looks.
+
+📖 **Full documentation: [oskar-j.github.io/thresher](https://oskar-j.github.io/thresher/)**
 
 ## Table of contents
 
