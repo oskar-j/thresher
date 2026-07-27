@@ -1,6 +1,6 @@
 [project]
 name = "thresher-py"
-version = "0.5.1"
+version = "0.5.2"
 description = "Find threshold for fine-tuning output from predict_proba"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,7 +31,11 @@ thresher = "thresher.cli:main"
 ray = ["ray>=2.9"]
 
 [project.urls]
-Documentation = "https://oskar-j.github.io/thresher/"
+# Read the Docs, and specifically its 'stable' version, which tracks the newest tag - so
+# someone arriving from a release on PyPI reads that release's documentation rather than
+# whatever has been merged since. The README points at the GitHub Pages build, which
+# tracks main.
+Documentation = "https://thresher.readthedocs.io/en/stable/"
 Homepage = "https://github.com/oskar-j/thresher"
 Repository = "https://github.com/oskar-j/thresher"
 Issues = "https://github.com/oskar-j/thresher/issues"

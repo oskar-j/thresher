@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-07-27
+
+### Changed
+
+- The **Documentation** link in the package metadata now points at
+  [Read the Docs](https://thresher.readthedocs.io/en/stable/) rather than the GitHub Pages
+  build, so the link shown on the
+  [PyPI project page](https://pypi.org/project/thresher-py/) leads to the host that keeps a
+  built copy of every release. It points at `stable`, which tracks the newest tag, so a
+  reader arriving from a release on PyPI gets that release's documentation rather than
+  whatever has been merged since.
+
+  Both sites are published and carry the same content; they are built from the same
+  `mkdocs.yml` and the same `docs` dependency group. The README continues to link to the
+  GitHub Pages build.
+
+  Package metadata is written when the distribution is built, so this only takes effect
+  from this release onwards - the link on older versions still points at GitHub Pages.
+
 ## [0.5.1] - 2026-07-27
 
 ### Added
@@ -610,7 +629,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/oskar-j/thresher/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/oskar-j/thresher/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/oskar-j/thresher/compare/v0.4.5...v0.5.0
 [0.4.5]: https://github.com/oskar-j/thresher/compare/v0.4.4...v0.4.5
