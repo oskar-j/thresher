@@ -20,6 +20,7 @@ MEDIUM_LOWER, MEDIUM_UPPER = 0.40, 0.65
     [
         pytest.param(None, {}, id="default"),
         pytest.param("exact", {}, id="exact"),
+        pytest.param("hist", {}, id="hist"),
         pytest.param("linear", {}, id="linear"),
         pytest.param("sim", {}, id="genetic"),
         pytest.param("grid", {}, id="grid"),
@@ -161,9 +162,15 @@ class TestSlowInputWarning:
         for name, entry in algorithm.available_algorithms.items():
             assert entry.data_vol_thresh > 0, f"{name} has no usable threshold"
 
-    def test_the_exhaustive_search_is_the_first_to_complain(self) -> None:
-        """Linear search is the only quadratic one, so it should have the lowest bar."""
+    def test_the_thresholds_rank_by_how_the_work_actually_grows(self) -> None:
+        """The order should follow the algorithms' costs rather than being set arbitrarily.
+
+        Linear search is the only quadratic one, so it complains first. The histogram
+        sweep neither sorts nor holds the data, so it lasts longest - further than the
+        exact sweep, which keeps one entry per distinct score.
+        """
         thresholds = {name: entry.data_vol_thresh for name, entry in algorithm.available_algorithms.items()}
 
         assert thresholds["ls"] == min(thresholds.values())
-        assert thresholds["exact"] == max(thresholds.values())
+        assert thresholds["hist"] == max(thresholds.values())
+        assert thresholds["hist"] > thresholds["exact"] > thresholds["ls"]

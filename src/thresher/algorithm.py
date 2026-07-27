@@ -39,6 +39,14 @@ available_algorithms: dict[str, Algorithm] = {
         # algorithm that runs out first
         data_vol_thresh=10_000_000,
     ),
+    "hist": Algorithm(
+        id="hist",
+        synonyms=["histogram", "binned", "bins"],
+        # One pass and no sort, so it outlasts everything except the memory for its bins,
+        # which does not grow with the input at all.
+        data_vol_thresh=50_000_000,
+        full_name="Histogram sweep",
+    ),
     "ls": Algorithm(
         id="ls",
         synonyms=["linear", "linear_search"],

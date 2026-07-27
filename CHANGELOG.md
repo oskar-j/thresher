@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-07-27
+
+### Added
+
+- **`hist`, a histogram sweep** - a non-exact estimator whose memory does not follow the
+  input. The score range is divided into a fixed number of bins, the classes falling into
+  each are counted in one pass, and the *bins* are swept with the same running-total
+  argument the exact sweep uses over distinct scores. Nothing is sorted and no row is read
+  twice.
+
+  | | `hist` | `exact` |
+  |---|---|---|
+  | 100,000 rows | 19 KB | 12 MB |
+  | 1,000,000 rows | **49 KB** | 107 MB |
+
+  The cost is resolution: a threshold can only sit on a bin edge, so the answer is off by
+  at most one bin width. That makes it the one approximation here with a *bounded* error
+  rather than a statistical one - it does not sample, so it returns the same answer every
+  run. At the default 1,024 bins it captures 99.98% of the achievable accuracy, and
+  `no_of_bins` trades resolution against memory directly.
+
+  Where `grid` also evaluates a fixed set of candidates, it rescans every row for each one
+  (`O(c·n)`); this reads each row once whatever the resolution, at `O(n + k)`.
+
+### Changed
+
+- `optimize_threshold` no longer copies inputs that are already sequences. It always built
+  its own lists, which costs memory proportional to the input and defeated the point of an
+  algorithm whose own allocation is flat - `hist` would still have paid for two full copies
+  to reach it. A `Sequence` can be measured and iterated more than once, which is all the
+  solvers need; anything else is consumed into a list as before. End-to-end memory for
+  `hist` on a million rows fell from 15.7 MB to 49 KB.
+
+- The **Documentation** link in the package metadata points back at the
+  [GitHub Pages build](https://oskar-j.github.io/thresher/), and the README now links to
+  [Read the Docs](https://thresher.readthedocs.io/en/stable/). PyPI can verify a URL it can
+  tie to the publishing repository - which, under Trusted Publishing, includes that
+  repository's GitHub Pages domain - so this returns the link to the "Verified details"
+  section of the PyPI project page. Read the Docs, being a third-party domain, cannot be
+  verified. The README keeps the Read the Docs link because that is the build with a copy
+  of every release and a version switcher.
+
 ## [0.5.2] - 2026-07-27
 
 ### Changed
@@ -629,7 +671,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/oskar-j/thresher/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/oskar-j/thresher/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/oskar-j/thresher/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/oskar-j/thresher/compare/v0.4.5...v0.5.0

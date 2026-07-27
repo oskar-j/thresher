@@ -126,7 +126,7 @@ class TestLengthMismatch:
         assert "3 scores" in message
         assert "2 entries" in message
 
-    @pytest.mark.parametrize("algorithm_name", ["exact", "ls", "grid", "sgrid", "gen", "sgd"])
+    @pytest.mark.parametrize("algorithm_name", ["exact", "hist", "ls", "grid", "sgrid", "gen", "sgd"])
     def test_every_algorithm_rejects_it(self, algorithm_name: str) -> None:
         # The check sits in run_computations, so no solver can be reached with ragged input.
         with pytest.raises(ValueError, match="same length"):

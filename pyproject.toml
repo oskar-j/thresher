@@ -1,6 +1,6 @@
 [project]
 name = "thresher-py"
-version = "0.5.2"
+version = "0.5.3"
 description = "Find threshold for fine-tuning output from predict_proba"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,11 +31,12 @@ thresher = "thresher.cli:main"
 ray = ["ray>=2.9"]
 
 [project.urls]
-# Read the Docs, and specifically its 'stable' version, which tracks the newest tag - so
-# someone arriving from a release on PyPI reads that release's documentation rather than
-# whatever has been merged since. The README points at the GitHub Pages build, which
-# tracks main.
-Documentation = "https://thresher.readthedocs.io/en/stable/"
+# GitHub Pages, because PyPI can verify it. A package uploaded through Trusted Publishing
+# has the GitHub URLs for its own repository verified, and that includes the project's
+# GitHub Pages domain - so this link is shown under "Verified details" rather than under
+# "Unverified details", which a readthedocs.io address cannot be. The README points at the
+# Read the Docs build, which keeps a copy of every release.
+Documentation = "https://oskar-j.github.io/thresher/"
 Homepage = "https://github.com/oskar-j/thresher"
 Repository = "https://github.com/oskar-j/thresher"
 Issues = "https://github.com/oskar-j/thresher/issues"

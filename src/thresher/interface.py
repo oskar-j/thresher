@@ -1,6 +1,6 @@
 """The user-facing interface: the `Thresher` class."""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Any
 
 from thresher import algorithm
@@ -23,8 +23,8 @@ class ThresherBase:
     def _compute(
         self,
         chosen_algorithm: algorithm.Algorithm,
-        scores: list[float],
-        actual_classes: list[int],
+        scores: Sequence[float],
+        actual_classes: Sequence[int],
     ) -> float:
         """Hand the work to the dispatcher, applying this instance's options.
 
@@ -172,9 +172,18 @@ class Thresher(ThresherBase):
         if not isinstance(actual_classes, Iterable):
             raise NotIterableError
 
-        score_values = list(scores)
+        # Materialise only what has to be. Copying a caller's list costs memory
+        # proportional to the input, which defeats the algorithms whose own allocation
+        # does not grow with it - `hist` holds a few kilobytes of counters however large
+        # the data is, and would still have paid for two full copies to get here. A
+        # Sequence can already be measured and iterated more than once, which is all the
+        # solvers need; anything else is consumed into a list as before.
+        score_values: Sequence[float] = scores if isinstance(scores, Sequence) else list(scores)
+        class_values: Sequence[int]
         if ("labels" in self.options) and (isinstance(self.options["labels"], Iterable)):
             class_values = list(map_labels(actual_classes, self.options["labels"]))
+        elif isinstance(actual_classes, Sequence):
+            class_values = actual_classes
         else:
             class_values = list(actual_classes)
 

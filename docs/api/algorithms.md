@@ -8,6 +8,10 @@
 
 ::: thresher.algs.exact.compute.run
 
+## Histogram sweep
+
+::: thresher.algs.histogram.compute.run
+
 ## Linear search
 
 ::: thresher.algs.linear.compute.run
