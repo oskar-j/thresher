@@ -21,7 +21,7 @@ from thresher.utils import get_or_default, map_labels, pairwise, print_progress_
 Dataset = tuple[list[float], list[int]]
 DatasetFactory = Callable[..., Dataset]
 
-REPORTING_ALGORITHMS = ["exact", "ls", "grid", "sgrid", "gen", "sgd"]
+REPORTING_ALGORITHMS = ["exact", "hist", "ls", "grid", "sgrid", "gen", "sgd"]
 
 
 class TestScoreHelpers:

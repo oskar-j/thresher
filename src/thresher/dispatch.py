@@ -18,6 +18,7 @@ from thresher import algorithm
 from thresher.algs.exact import compute as exact_compute
 from thresher.algs.genetic import compute as gen_compute
 from thresher.algs.grid import compute as grid_compute
+from thresher.algs.histogram import compute as hist_compute
 from thresher.algs.linear import compute as linear_compute
 from thresher.algs.sgd import compute as sgd_compute
 from thresher.backends import Backend, LocalBackend
@@ -33,6 +34,7 @@ SLOW_FOR_THIS_MUCH_DATA = (
 )
 
 EXACT_ALGORITHM = algorithm.available_algorithms["exact"]
+HISTOGRAM_ALGORITHM = algorithm.available_algorithms["hist"]
 LINEAR_ALGORITHM = algorithm.available_algorithms["ls"]
 STOCHASTIC_GRADIENT_DESCENT = algorithm.available_algorithms["sgd"]
 GENETIC_ALGORITHM = algorithm.available_algorithms["gen"]
@@ -103,6 +105,8 @@ def run_computations(
 
     if chosen_algorithm == EXACT_ALGORITHM:
         return exact_compute.run(scores, actual_classes, verbose, progress_bar, alg_options, resolved_backend)
+    if chosen_algorithm == HISTOGRAM_ALGORITHM:
+        return hist_compute.run(scores, actual_classes, verbose, progress_bar, alg_options)
     if chosen_algorithm == LINEAR_ALGORITHM:
         # An explicit n_jobs asks for local multiprocessing, which predates backends and
         # would only contend with a cluster, so a non-local backend takes precedence.

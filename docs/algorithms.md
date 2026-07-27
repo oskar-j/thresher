@@ -1,6 +1,6 @@
 # Algorithms
 
-Six are available. The first is exact and the default; the rest predate it and approximate.
+Seven are available. The first is exact and the default; the rest approximate.
 
 ```python
 Thresher(algorithm="grid").optimize_threshold(scores, actual_classes)
@@ -19,6 +19,7 @@ under test, so 100% means "found a cut-off as good as the best one that exists".
 | Algorithm | Separable | Overlapping | Imbalanced | Time | Complexity | Memory |
 |---|---|---|---|---|---|---|
 | `exact` | **100.00%** | **100.00%** | **100.00%** | **1 ms** | **O(n log n)** | **O(d)** |
+| `hist` | 99.99% | 99.99% | 99.98% | 1 ms | O(n + k) | **O(k)** |
 | `ls` | 100.00% | 100.00% | 100.00% | 266 ms | O(n²) | O(n) |
 | `grid` | 99.82% | 99.98% | 100.00% | 18 ms | O(c·n) | O(c) |
 | `sgrid` | 99.57% | 97.84% | 99.70% | 1 ms | O(c·r·n) | O(n) |
@@ -26,7 +27,7 @@ under test, so 100% means "found a cut-off as good as the best one that exists".
 | `sgd` | 99.54% | 97.01% | 88.37% | 12 ms | O(i·r·n) | O(r·n) |
 
 Where _n_ is the number of scores, _d_ the number of **distinct** scores, _c_ the grid
-candidates, _r_ the `stoch_ratio` sample fraction, _e_ the genetic evaluations and _i_ the
+candidates, _k_ the histogram bins, _r_ the `stoch_ratio` sample fraction, _e_ the genetic evaluations and _i_ the
 sgd steps.
 
 Reproduce it with `uv run python examples/benchmark.py`.
@@ -48,6 +49,7 @@ usually comfortable up to about 10,000. The 'exact' algorithm is exact and O(n l
 
 | Algorithm | Comfortable up to | Why |
 |---|---|---|
+| `hist` | 50,000,000 | one pass, no sort, and memory that does not follow the input |
 | `exact` | 10,000,000 | `O(n log n)` — the input runs out before the algorithm does |
 | `sgrid` | 10,000,000 | reads only `stoch_ratio` of the data per candidate |
 | `sgd` | 2,000,000 | linear in the sampled fraction |
@@ -86,6 +88,40 @@ Recognition Letters, 2006), and Google's
 which gives the same `O(n log n)` bound "because of the sorting of the feature values".
 
 It has no parameters. There is no accuracy left to trade for speed.
+
+## Histogram sweep
+
+`hist` — added in `0.5.3`. The approximation to reach for when the data is too large to
+hold, or when you want a bounded, predictable error rather than a statistical one.
+
+The exact sweep sorts the scores and walks them. Sorting is what costs it `O(n log n)` and
+what forces it to keep the data. This gives up a little precision for neither: divide the
+score range into a fixed number of bins, count the classes falling into each in one pass,
+then sweep the *bins* with the same running-total argument:
+
+```
+correct(j) = (negatives in bins below j) + (positives in bins from j upwards)
+```
+
+Nothing is sorted, no row is read twice, and the only thing held is the counters — so
+memory is set by the resolution, not the input:
+
+| | `hist` | `exact` |
+|---|---|---|
+| 100,000 rows | 19 KB | 12 MB |
+| 1,000,000 rows | **49 KB** | 107 MB |
+
+The cost is resolution. A threshold can only sit on a bin edge, so the answer is off by at
+most one bin width — an error you control directly, and the same every run, unlike the
+sampling-based approximations. At the default 1,024 bins it captures 99.98% of the
+achievable accuracy.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `no_of_bins` | 1024 | resolution. Doubling it halves the worst-case error and costs one more counter per bin — and nothing per row |
+
+Where `grid` also tests a fixed set of candidates, it rescans every row for each one
+(`O(c·n)`). This reads each row once, whatever the resolution.
 
 ## Linear search
 

@@ -16,7 +16,7 @@ from thresher import algorithm
 Dataset = tuple[list[float], list[int]]
 DatasetFactory = Callable[..., Dataset]
 
-ALL_ALGORITHMS = ["exact", "ls", "sgd", "gen", "grid", "sgrid"]
+ALL_ALGORITHMS = ["exact", "hist", "ls", "sgd", "gen", "grid", "sgrid"]
 
 
 @pytest.mark.parametrize("algorithm_name", ["gen", "sgrid", "sgd"])

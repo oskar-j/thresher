@@ -4,7 +4,7 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/thresher-py.svg)](https://pypi.org/project/thresher-py/)
 [![Build](https://img.shields.io/github/actions/workflow/status/oskar-j/thresher/ci.yml?branch=main&label=build)](https://github.com/oskar-j/thresher/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-%E2%89%A5%2090%25-brightgreen)](https://github.com/oskar-j/thresher/actions/workflows/ci.yml)
-[![Docs](https://img.shields.io/badge/docs-oskar--j.github.io%2Fthresher-blue)](https://oskar-j.github.io/thresher/)
+[![Docs](https://img.shields.io/readthedocs/thresher)](https://thresher.readthedocs.io/en/stable/)
 [![Downloads](https://img.shields.io/pepy/dt/thresher-py)](https://pepy.tech/project/thresher-py)
 [![Stars](https://img.shields.io/github/stars/oskar-j/thresher)](https://github.com/oskar-j/thresher/stargazers)
 [![License](https://img.shields.io/pypi/l/thresher-py.svg)](https://github.com/oskar-j/thresher/blob/main/LICENSE)
@@ -36,9 +36,9 @@ thresher scores.csv
 ```
 
 That is the whole interface. Everything else in this README is about tuning what happens
-underneath — which of the six search algorithms runs, and how hard it looks.
+underneath — which of the seven search algorithms runs, and how hard it looks.
 
-📖 **Full documentation: [oskar-j.github.io/thresher](https://oskar-j.github.io/thresher/)**
+📖 **Full documentation: [thresher.readthedocs.io](https://thresher.readthedocs.io/en/stable/)** — a build for every release, with a version switcher.
 
 ## Table of contents
 
@@ -46,6 +46,7 @@ underneath — which of the six search algorithms runs, and how hard it looks.
   - [Choosing an algorithm](#choosing-an-algorithm)
 - [Implemented algorithms](#implemented-algorithms)
   - [Exact sweep](#exact-sweep)
+  - [Histogram sweep](#histogram-sweep)
   - [Linear search](#linear-search)
   - [2-dim Stochastic Gradient Descent](#2-dim-stochastic-gradient-descent)
   - [Evolutionary algorithm](#evolutionary-algorithm)
@@ -170,6 +171,40 @@ between adjacent scores, so it cannot express the "classify everything as negati
 which the sweep reaches for free at `max(scores)`. On randomised inputs that mattered in
 about 10% of cases.
 
+### Histogram sweep
+
+`hist` — added in `0.5.3`. The approximation to reach for when the data is too large to
+hold, or when you want a bounded, predictable error rather than a statistical one.
+
+The exact sweep sorts the scores and walks them. Sorting is what costs it `O(n log n)` and
+what forces it to keep the data. This gives up a little precision for neither: divide the
+score range into a fixed number of bins, count the classes falling into each in one pass,
+then sweep the *bins* with the same running-total argument:
+
+```
+correct(j) = (negatives in bins below j) + (positives in bins from j upwards)
+```
+
+Nothing is sorted, no row is read twice, and the only thing held is the counters — so
+memory is set by the resolution, not the input:
+
+| | `hist` | `exact` |
+|---|---|---|
+| 100,000 rows | 19 KB | 12 MB |
+| 1,000,000 rows | **49 KB** | 107 MB |
+
+The cost is resolution. A threshold can only sit on a bin edge, so the answer is off by at
+most one bin width — an error you control directly, and the same every run, unlike the
+sampling-based approximations. At the default 1,024 bins it captures 99.98% of the
+achievable accuracy.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `no_of_bins` | 1024 | resolution. Doubling it halves the worst-case error and costs one more counter per bin — and nothing per row |
+
+Where `grid` also tests a fixed set of candidates, it rescans every row for each one
+(`O(c·n)`). This reads each row once, whatever the resolution.
+
 ### Linear search
 
 Superseded by [Exact sweep](#exact-sweep), which returns the same answer - or a
@@ -242,7 +277,7 @@ List of parameters to customize:
 
 ## Algorithm scores
 
-How the six compare on 2,000 rows, averaged over 5 seeds. Accuracy is relative to the
+How the seven compare on 2,000 rows, averaged over 5 seeds. Accuracy is relative to the
 **exact** optimum — the best accuracy any single threshold could reach on that dataset,
 computed independently by sweeping the sorted scores rather than by asking one of the
 algorithms under test. 100% therefore means "found a cut-off as good as the best one that
@@ -251,7 +286,8 @@ exists", not merely "did well".
 | Algorithm | Separable | Overlapping | Imbalanced | Time | Complexity | Memory |
 |---|---|---|---|---|---|---|
 | `exact` | **100.00%** | **100.00%** | **100.00%** | **1 ms** | **O(n log n)** | **O(d)** |
-| `ls` | 100.00% | 100.00% | 100.00% | 266 ms | O(n²) | O(n) |
+| `hist` | 99.99% | 99.99% | 99.98% | 1 ms | O(n + k) | **O(k)** |
+| `ls` | 100.00% | 100.00% | 100.00% | 221 ms | O(n²) | O(n) |
 | `grid` | 99.82% | 99.98% | 100.00% | 18 ms | O(c·n) | O(c) |
 | `sgrid` | 99.57% | 97.84% | 99.70% | 1 ms | O(c·r·n) | O(n) |
 | `gen` | 99.62% | 98.23% | 88.64% | 117 ms | O(e·r·n) | O(r·n) |
@@ -259,7 +295,7 @@ exists", not merely "did well".
 
 Where _n_ is the number of scores, _d_ the number of **distinct** scores (never more than
 _n_, and far fewer for rounded probabilities), _c_ the grid candidates
-(`10**no_of_decimal_places + 1`, so 101 by default), _r_ the `stoch_ratio` sample fraction,
+(`10**no_of_decimal_places + 1`, so 101 by default), _k_ the histogram bins, _r_ the `stoch_ratio` sample fraction,
 _e_ the genetic evaluations (`population_size × number_of_generations × number_of_iterations`)
 and _i_ the sgd steps (at most `num_of_iters`).
 
@@ -269,8 +305,9 @@ worth a second look:
 - **`exact` is O(d), not O(n)** — it keeps one count per *distinct* score, not per row. If
   your probabilities are rounded to two decimals, that is at most 101 entries whatever the
   row count, which is why it stays cheap on very large inputs.
-- **`grid` is the only one that does not grow with the input at all** — it allocates the
-  grid and streams the data past it through a lazy `zip`.
+- **`grid` and `hist` do not grow with the input at all** — `grid` allocates its candidates
+  and streams the data past them; `hist` keeps one pair of counters per bin. At a million
+  rows `hist` uses 49 KB against `exact`'s 107 MB.
 - **`sgrid` is O(n) despite reading only a fraction of the data.** It builds the full
   paired list before sampling from it, so the subsampling buys time but not memory. That is
   an implementation detail rather than something inherent to the algorithm.

@@ -90,7 +90,7 @@ DATASETS: dict[str, Callable[[int, int], Dataset]] = {
     "Imbalanced": imbalanced,
 }
 
-ALGORITHMS = ["exact", "ls", "grid", "sgrid", "gen", "sgd"]
+ALGORITHMS = ["exact", "hist", "ls", "grid", "sgrid", "gen", "sgd"]
 
 # Cost of a run, in the number of (score, class) pairs examined.
 #
@@ -107,6 +107,7 @@ ALGORITHMS = ["exact", "ls", "grid", "sgrid", "gen", "sgd"]
 # from n, which leaves them linear but inexact.
 COMPLEXITY = {
     "exact": "O(n log n)",
+    "hist": "O(n + k)",
     "ls": "O(n²)",
     "grid": "O(c·n)",
     "sgrid": "O(c·r·n)",
@@ -126,8 +127,11 @@ COMPLEXITY = {
 #   gen    the sampled indices, plus a fitness sample per agent per iteration, which is a
 #          constant with respect to n
 #   sgd    the sampled indices only
+#   hist   k pairs of counters and nothing else - it reads each row once and keeps none,
+#          so its allocation is set by the resolution rather than by the input
 MEMORY = {
     "exact": "O(d)",
+    "hist": "O(k)",
     "ls": "O(n)",
     "grid": "O(c)",
     "sgrid": "O(n)",
