@@ -102,7 +102,7 @@ The `src/` layout matters here: tests import the *installed* package, so a packa
 Three layers, each in its own file; a call flows strictly downward:
 
 1. **`interface.py`** — `Thresher` facade. Holds the `options` dict, normalizes labels, builds `data_traits`, then delegates. The `algorithm` option is resolved to an `Algorithm` namedtuple at construction time via `algorithm.retrieve_by_alias()`, so everything downstream compares objects, not strings.
-2. **`oracle.py`** — two responsibilities: `run_oracle()` picks an algorithm from data traits, and `run_computations()` dispatches to the chosen implementation. This is the only module that imports the individual `algs/*/compute` modules.
+2. **`dispatch.py`** — validates the input, warns if it is large for the chosen algorithm, and routes to that solver. The only module that imports the individual `algs/*/compute` modules. It was `oracle.py` until 0.5.0 removed the oracle.
 3. **`algs/<name>/compute.py`** — the actual solvers. They know nothing about `Thresher` or the registry; they receive plain lists.
 
 ### Algorithm registry (`algorithm.py`)
@@ -110,7 +110,8 @@ Three layers, each in its own file; a call flows strictly downward:
 `available_algorithms` is a dict of `Algorithm` values — a `typing.NamedTuple` with `id`, `full_name`, `synonyms` and `data_vol_thresh`. It drives three things at once:
 
 - **Lookup by alias** — `retrieve_by_alias()` checks the dict key first, then falls back to a linear scan of `synonyms`. This is why `algorithm='sim'`, `'genetic'`, and `'gen'` all work.
-- **Oracle selection** — as of 0.4.0 `run_oracle()` returns `exact` unconditionally, and `data_vol_thresh` is advisory only. The old ladder (`≤1000 → linear`, `≤50000 → grid`, else `sgd`) traded accuracy against size because the only exact algorithm was O(n²); `exact` is exact at every size *and* cheaper, so the trade-off is gone. Editing `data_vol_thresh` no longer changes any behaviour.
+- **`data_vol_thresh`** — since 0.5.0 this drives the "this will be slow" warning in `run_computations`, so editing a value changes when users are warned. It used to be the oracle's routing ladder; the oracle was removed in 0.5.0, having had nothing left to decide since `exact` arrived. There is no per-call algorithm choice any more: the algorithm is settled when a `Thresher` is built.
+- **`'auto'`** — no longer an algorithm. It named the oracle, and survives only as a synonym of `exact`, alongside `'default'` and `'default_heuristics'`, so existing calls keep working.
 - **The public algorithm list** — `get_supported_algorithms()` returns its keys.
 
 ### Exceptions

@@ -1,10 +1,16 @@
-"""Algorithm selection and dispatch.
+"""Dispatch: validate the input, then run the chosen algorithm.
 
-Two responsibilities sit here: `run_oracle` picks an algorithm from the shape of the data,
-and `run_computations` routes to the chosen implementation. This is the only module that
-imports the individual solvers.
+This is the only module that imports the individual solvers.
+
+It was `oracle.py` until 0.5.0. The oracle chose an algorithm from the size of the input,
+because the only exact algorithm was O(n²) and stopped being affordable - so accuracy had
+to be traded against volume. `exact` removed that trade-off in 0.4.0 by being exact at
+every size *and* cheaper than the approximations, at which point the oracle had nothing
+left to decide and was announced for removal. The algorithm is now settled when a
+`Thresher` is built, not per call.
 """
 
+import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -18,36 +24,20 @@ from thresher.backends import Backend, LocalBackend
 from thresher.exceptions import AlgorithmNotWiredError
 from thresher.utils import validate_actual_classes, validate_lengths
 
+logger = logging.getLogger(__name__)
+
+SLOW_FOR_THIS_MUCH_DATA = (
+    "%s is likely to be slow on %s rows - it is usually comfortable up to about %s. "
+    "The 'exact' algorithm is exact and O(n log n), and is the default for this reason. "
+    "Silence this with logging.getLogger('thresher').setLevel(logging.ERROR)."
+)
+
 EXACT_ALGORITHM = algorithm.available_algorithms["exact"]
 LINEAR_ALGORITHM = algorithm.available_algorithms["ls"]
 STOCHASTIC_GRADIENT_DESCENT = algorithm.available_algorithms["sgd"]
 GENETIC_ALGORITHM = algorithm.available_algorithms["gen"]
 GRID_SEARCH_ALGORITHM = algorithm.available_algorithms["grid"]
 STOCHASTIC_GRID_SEARCH_ALGORITHM = algorithm.available_algorithms["sgrid"]
-
-
-def run_oracle(data_traits: Mapping[str, Any]) -> algorithm.Algorithm:
-    """Pick an algorithm from the traits of the input data.
-
-    Always `exact` since 0.4.0. The oracle used to trade accuracy against input size,
-    routing to linear search below 1,000 rows, grid search below 50,000 and stochastic
-    gradient descent above that, because the only exact algorithm available was O(n²) and
-    became unaffordable. `exact` removed that trade-off: it is exact at every size *and*
-    cheaper than the approximations it replaced, so there is nothing left to weigh up.
-
-    The other algorithms remain selectable by name. This function is kept, rather than
-    inlined into the caller, because a future algorithm might reintroduce a genuine
-    trade-off - a metric other than accuracy, say - and this is where that decision
-    belongs.
-
-    Args:
-        data_traits: measurements of the input. `data_length`, the number of scores, is
-            no longer consulted.
-
-    Returns:
-        The exact sweep.
-    """
-    return EXACT_ALGORITHM
 
 
 def run_computations(
@@ -81,6 +71,11 @@ def run_computations(
     Returns:
         The threshold chosen by the algorithm.
 
+    Logs:
+        A warning if the input is larger than the chosen algorithm's `data_vol_thresh`,
+        naming a faster alternative. It is not raised, because the thresholds are guidance
+        rather than limits.
+
     Raises:
         ValueError: if the labels are empty, single-class, outside (-1, 1), or a different
             length from the scores.
@@ -90,6 +85,16 @@ def run_computations(
     """
     validate_lengths(scores, actual_classes)
     validate_actual_classes(actual_classes)
+
+    # A warning rather than a refusal: the thresholds are order-of-magnitude guidance from
+    # one machine, and a caller may well have reason to wait.
+    if len(scores) > chosen_algorithm.data_vol_thresh:
+        logger.warning(
+            SLOW_FOR_THIS_MUCH_DATA,
+            chosen_algorithm.full_name,
+            f"{len(scores):,}",
+            f"{chosen_algorithm.data_vol_thresh:,}",
+        )
 
     if verbose:
         print(f"Executing the {chosen_algorithm.full_name} algorithm... please wait for the result.")

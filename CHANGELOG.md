@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-27
+
+### Removed
+
+- **The oracle**, as announced in `0.4.0`. It chose an algorithm from the size of the
+  input, because the only exact algorithm was `O(n²)` and stopped being affordable, so
+  accuracy had to be traded against volume. `exact` removed that trade-off in `0.4.0` by
+  being exact at every size *and* cheaper than the approximations, at which point the
+  oracle had nothing left to decide and had been returning `exact` unconditionally.
+
+  `run_oracle()` is gone, and the algorithm is settled when a `Thresher` is built rather
+  than per call.
+
+  **Nothing is required of you.** Callers on the default already had `exact`, and
+  `algorithm='auto'` - along with `'default'` and `'default_heuristics'` - still works as a
+  synonym for the default.
+
+- `'auto'` is no longer an entry in `available_algorithms`, so
+  `get_supported_algorithms()` returns six real algorithms rather than five plus the
+  oracle. `Thresher().get_current_algorithm()` now reports `exact` instead of `auto`, which
+  is what actually runs.
+
+- `thresher.oracle` is now `thresher.dispatch`. Keeping a module named for a mechanism it
+  no longer contains would repeat the naming mismatch `exceptions.py` had before `0.4.5`.
+  It holds `run_computations`, and is still the only module that imports the solvers.
+
+### Added
+
+- **A warning when an algorithm is asked to handle more data than it is comfortable with.**
+  `data_vol_thresh` was vestigial once the oracle stopped routing on it; it is now filled
+  in for every algorithm and drives a `logging.warning`:
+
+  ```
+  WARNING thresher.dispatch: Linear search is likely to be slow on 12,000 rows - it is
+  usually comfortable up to about 10,000. The 'exact' algorithm is exact and O(n log n)...
+  ```
+
+  | Algorithm | Comfortable up to | | Algorithm | Comfortable up to |
+  |---|---|---|---|---|
+  | `exact` | 10,000,000 | | `grid` | 1,000,000 |
+  | `sgrid` | 10,000,000 | | `gen` | 100,000 |
+  | `sgd` | 2,000,000 | | `ls` | 10,000 |
+
+  The figures come from the timings in `examples/benchmark.py`, at roughly where a run
+  passes ten seconds on one laptop. They are guidance rather than limits - a faster machine
+  moves them all up - so crossing one warns and continues rather than refusing. It goes
+  through `logging` rather than `warnings` precisely so it can be silenced the ordinary
+  way: `logging.getLogger("thresher").setLevel(logging.ERROR)`.
+
+- A **Memory** column in the README's algorithm comparison, derived from the
+  implementations. It shows that `exact` is `O(d)` in *distinct* scores rather than rows,
+  that `grid` is the only algorithm whose memory does not grow with the input, and that
+  `sgrid` allocates `O(n)` despite reading only a fraction of the data - it builds the full
+  paired list before sampling, so the subsampling buys time but not memory.
+
 ## [0.4.5] - 2026-07-26
 
 ### Added
@@ -527,7 +582,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.4.5...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/oskar-j/thresher/compare/v0.4.5...v0.5.0
 [0.4.5]: https://github.com/oskar-j/thresher/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/oskar-j/thresher/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/oskar-j/thresher/compare/v0.4.2...v0.4.3

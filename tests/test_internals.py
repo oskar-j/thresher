@@ -172,13 +172,10 @@ class TestReporting:
         if algorithm_name != "sgd":
             assert "100.0%" in output, f"{algorithm_name} left its progress bar unfinished"
 
-    def test_the_oracle_announces_its_choice(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_verbose_names_the_algorithm_that_ran(self, capsys: pytest.CaptureFixture[str]) -> None:
         thresher.Thresher(verbose=True).optimize_threshold([0.1, 0.3, 0.4, 0.7], [-1, -1, 1, 1])
 
-        output = capsys.readouterr().out
-
-        assert "heuristics" in output.lower()
-        assert "Exact sweep" in output
+        assert "Exact sweep" in capsys.readouterr().out
 
     def test_verbose_and_progress_bar_together_on_the_genetic_solver(
         self, capsys: pytest.CaptureFixture[str]
@@ -236,9 +233,9 @@ class TestDispatch:
         end of the dispatch chain and return None.
         """
         from thresher.algorithm import Algorithm
-        from thresher.oracle import run_computations
+        from thresher.dispatch import run_computations
 
-        unwired = Algorithm(id="nope", full_name="Not wired up", synonyms=[], data_vol_thresh=None)
+        unwired = Algorithm(id="nope", full_name="Not wired up", synonyms=[], data_vol_thresh=1)
 
         with pytest.raises(NotImplementedError):
             run_computations(

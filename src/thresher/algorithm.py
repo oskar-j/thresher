@@ -12,65 +12,73 @@ class Algorithm(NamedTuple):
         id: the canonical short name, and the key in `available_algorithms`.
         full_name: human-readable name, used in verbose output.
         synonyms: alternative names accepted by `retrieve_by_alias`.
-        data_vol_thresh: advisory upper bound on the input size for which this algorithm
-            is a sensible manual choice. Since 0.4.0 the oracle no longer routes on it -
-            `exact` is both exact and cheaper than every alternative, so there is nothing
-            left to trade off - but it still records where each of the others stops being
-            practical. `None` means no particular ceiling.
+        data_vol_thresh: input size beyond which this algorithm is slow enough to be worth
+            warning about. `run_computations` logs a warning above it, so nobody starts a
+            run that will take far longer than they expect.
+
+            Each value is roughly where a run passes ten seconds, extrapolated from the
+            timings in `examples/benchmark.py` on one laptop. They are order-of-magnitude
+            guidance rather than promises - a faster machine moves them all up - which is
+            why crossing one is a warning rather than a refusal.
     """
 
     id: str
     full_name: str
     synonyms: list[str]
-    data_vol_thresh: int | None
+    data_vol_thresh: int
 
 
 available_algorithms: dict[str, Algorithm] = {
-    "auto": Algorithm(
-        id="auto",
-        synonyms=["default", "default_heuristics"],
-        data_vol_thresh=None,
-        full_name="Default heuristics",
-    ),
     "exact": Algorithm(
         id="exact",
-        synonyms=["sweep", "exact_sweep", "sorted_sweep"],
-        data_vol_thresh=None,
+        # 'auto', 'default' and 'default_heuristics' named the oracle until 0.5.0 removed
+        # it. They are kept as aliases of the default so existing calls keep working.
+        synonyms=["sweep", "exact_sweep", "sorted_sweep", "auto", "default", "default_heuristics"],
         full_name="Exact sweep",
+        # O(n log n); 12 ms at 16,000 rows, so it is the input size rather than the
+        # algorithm that runs out first
+        data_vol_thresh=10_000_000,
     ),
     "ls": Algorithm(
         id="ls",
         synonyms=["linear", "linear_search"],
-        data_vol_thresh=1000,
         full_name="Linear search",
+        # O(n^2), and it bites early: 0.9 s at 4,000 rows becomes 18 s at 16,000
+        data_vol_thresh=10_000,
     ),
     "sgd": Algorithm(
         id="sgd",
         synonyms=["curve_fitting"],
-        data_vol_thresh=None,
         full_name="Stochastic gradient descent",
+        # linear in the sampled fraction of the data
+        data_vol_thresh=2_000_000,
     ),
     "gen": Algorithm(
         id="gen",
         synonyms=["genetic", "sim"],
-        data_vol_thresh=None,
         full_name="Genetic algorithm",
+        # linear, but with thousands of evaluations per run it is the slowest of the
+        # approximations
+        data_vol_thresh=100_000,
     ),
     "grid": Algorithm(
         id="grid",
         synonyms=["grid-search", "gs"],
-        data_vol_thresh=50 * 1000,
         full_name="Grid search",
+        # linear, with a fixed candidate count set by no_of_decimal_places
+        data_vol_thresh=1_000_000,
     ),
     "sgrid": Algorithm(
         id="sgrid",
         synonyms=["random-grid-search", "rn-grid", "s-grid"],
-        data_vol_thresh=None,
         full_name="Stochastic grid search",
+        # like grid, but each candidate reads only stoch_ratio of the data
+        data_vol_thresh=10_000_000,
     ),
 }
 
-DEFAULT = available_algorithms["auto"]
+# What `Thresher()` uses when no algorithm is named.
+DEFAULT = available_algorithms["exact"]
 
 
 def retrieve_by_alias(name: str) -> Algorithm:

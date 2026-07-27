@@ -45,7 +45,8 @@ def test_unknown_algorithm_in_set_algorithm() -> None:
         ("gs", "grid"),
         ("s-grid", "sgrid"),
         ("curve_fitting", "sgd"),
-        ("default", "auto"),
+        ("default", "exact"),
+        ("auto", "exact"),
     ],
 )
 def test_known_aliases_still_resolve(alias: str, expected: str) -> None:
