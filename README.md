@@ -97,15 +97,8 @@ the approximations. Pick a different one by name when you want to:
 Thresher(algorithm='grid').optimize_threshold(scores, actual_classes)
 ```
 
-> [!NOTE]
-> **The oracle was removed in `0.5.0`, as announced in `0.4.0`.** It used to choose an
-> algorithm from the size of your data, because the only exact algorithm was `O(n²)` and
-> stopped being affordable — so accuracy had to be traded against volume. Exact sweep
-> removed that trade-off by being exact at every size *and* cheaper than what it replaced,
-> which left the oracle with nothing to decide.
->
-> Nothing is required of you. If you used the default you already had `exact`, and
-> `algorithm='auto'` still works as a synonym for the default.
+`'auto'`, `'default'` and `'default_heuristics'` are all accepted as synonyms for the
+default, so you can spell it either way.
 
 Each algorithm declares the input size beyond which it becomes slow, and warns rather than
 making you wait to find out:
@@ -416,7 +409,7 @@ Here is a description of what does every particular parameter do:
 
 * **algorithm** (default value: `'exact'`) - choose the algorithm from the list of available ones.
 The same effect can be achieved by calling `set_algorithm(algorithm_name)` on the `Thresher` instance.
-`'auto'` is accepted as a synonym for the default; it named the oracle before `0.5.0` removed it
+`'auto'`, `'default'` and `'default_heuristics'` are accepted as synonyms for the default
 * **allow_parallel** (default value: `True`) - enables/disabled multiprocessing for algorithms
 * **verbose** (default value: `False`) - enables verbosity
 * **progress_bar** (default value: `False`) - shows a progress bar in the terminal (if supported by the algorithm)
@@ -610,7 +603,7 @@ Thresher(backend=RayBackend(num_shards=16)).optimize_threshold(scores, actual_cl
 ## Performance tests
 
 A very basic performance test (with 10 repeats, on a real-world [anonymized data](https://github.com/oskar-j/thresher/blob/main/examples/performance_test/milion_samples.7z) consisting of `10^6` rows) can be found in the Notebook [located here](https://github.com/oskar-j/thresher/blob/main/examples/performance_test/TresherPerformanceTest.ipynb).
-Similar experiment, but with more iterations, was conducted in the file [TresherPerformanceTestExtended.ipynb](https://github.com/oskar-j/thresher/blob/main/examples/performance_test/TresherPerformanceTestExtended.ipynb). Both notebooks predate `0.5.0` and exercise the oracle that used to pick an algorithm by input size; they are kept as a record of how the current thresholds were arrived at.
+Similar experiment, but with more iterations, was conducted in the file [TresherPerformanceTestExtended.ipynb](https://github.com/oskar-j/thresher/blob/main/examples/performance_test/TresherPerformanceTestExtended.ipynb). Both notebooks are older than the current algorithm set and are kept as a record of the measurements the size guidance above was drawn from.
 
 For a head-to-head comparison of accuracy and runtime across all five algorithms, see
 [Algorithm scores](#algorithm-scores) above — that one is reproducible from
