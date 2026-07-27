@@ -31,10 +31,11 @@ thresher = "thresher.cli:main"
 ray = ["ray>=2.9"]
 
 [project.urls]
-# Read the Docs, because it is the host that keeps a built copy of every release - so
-# someone arriving from a given version on PyPI can read that version's documentation.
-# The README points at the GitHub Pages build, which tracks main.
-Documentation = "https://thresher.readthedocs.io/en/latest/"
+# Read the Docs, and specifically its 'stable' version, which tracks the newest tag - so
+# someone arriving from a release on PyPI reads that release's documentation rather than
+# whatever has been merged since. The README points at the GitHub Pages build, which
+# tracks main.
+Documentation = "https://thresher.readthedocs.io/en/stable/"
 Homepage = "https://github.com/oskar-j/thresher"
 Repository = "https://github.com/oskar-j/thresher"
 Issues = "https://github.com/oskar-j/thresher/issues"

@@ -12,10 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The **Documentation** link in the package metadata now points at
-  [Read the Docs](https://thresher.readthedocs.io/en/latest/) rather than the GitHub Pages
+  [Read the Docs](https://thresher.readthedocs.io/en/stable/) rather than the GitHub Pages
   build, so the link shown on the
   [PyPI project page](https://pypi.org/project/thresher-py/) leads to the host that keeps a
-  built copy of every release.
+  built copy of every release. It points at `stable`, which tracks the newest tag, so a
+  reader arriving from a release on PyPI gets that release's documentation rather than
+  whatever has been merged since.
 
   Both sites are published and carry the same content; they are built from the same
   `mkdocs.yml` and the same `docs` dependency group. The README continues to link to the
