@@ -114,6 +114,27 @@ COMPLEXITY = {
     "sgd": "O(i·r·n)",
 }
 
+# Peak extra allocation, read off the implementations rather than measured:
+#
+#   exact  a dict keyed by *distinct* score, so d rather than n - which is why rounded
+#          probabilities cost it far less than the row count suggests
+#   ls     every midpoint between adjacent sorted scores, plus the sorted copy
+#   grid   only the grid itself; the data is streamed through a lazy zip, so this is the
+#          one algorithm whose memory does not grow with the input at all
+#   sgrid  materialises the full paired list before sampling from it, so it pays O(n)
+#          despite only reading a fraction - the sampling saves time, not memory
+#   gen    the sampled indices, plus a fitness sample per agent per iteration, which is a
+#          constant with respect to n
+#   sgd    the sampled indices only
+MEMORY = {
+    "exact": "O(d)",
+    "ls": "O(n)",
+    "grid": "O(c)",
+    "sgrid": "O(n)",
+    "gen": "O(r·n)",
+    "sgd": "O(r·n)",
+}
+
 
 def main() -> None:
     """Run the benchmark and print the results as a markdown table."""
@@ -141,16 +162,17 @@ def main() -> None:
             )
 
     print(f"\n{SIZE} rows, mean of {SEEDS} seeds. Accuracy is relative to the exact optimum.\n")
-    header = "| Algorithm | " + " | ".join(DATASETS) + " | Time | Complexity |"
+    header = "| Algorithm | " + " | ".join(DATASETS) + " | Time | Complexity | Memory |"
     print(header)
-    print("|" + "---|" * (len(DATASETS) + 3))
+    print("|" + "---|" * (len(DATASETS) + 4))
     for algorithm_name in ALGORITHMS:
         cells = [f"{results[d][algorithm_name][0] * 100:.2f}%" for d in DATASETS]
         mean_time = statistics.mean(results[d][algorithm_name][1] for d in DATASETS)
         print(
             f"| `{algorithm_name}` | "
             + " | ".join(cells)
-            + f" | {mean_time * 1000:.0f} ms | {COMPLEXITY[algorithm_name]} |"
+            + f" | {mean_time * 1000:.0f} ms | {COMPLEXITY[algorithm_name]}"
+            + f" | {MEMORY[algorithm_name]} |"
         )
 
 

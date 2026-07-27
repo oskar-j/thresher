@@ -3,7 +3,7 @@
 Both share this one implementation: `run` evaluates every point on a fixed grid over
 [0, 1] against the whole dataset, and `run_stoch` evaluates each point against a random
 subsample instead. Cost depends on the grid resolution rather than the input size, which
-is why the oracle prefers grid search for mid-sized inputs.
+once made it a good middle ground; `exact` is cheaper still and does not approximate.
 """
 
 import random

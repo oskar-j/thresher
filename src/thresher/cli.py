@@ -176,9 +176,10 @@ def _list_algorithms(ctx: click.Context, _param: click.Parameter, value: bool) -
     "-a",
     "--algorithm",
     "algorithm_name",
-    default="auto",
+    default="exact",
     show_default=True,
-    help="Algorithm to use. 'auto' lets the oracle choose from the data volume.",
+    help="Algorithm to use. The default is exact and is what you want unless you have a "
+    "specific reason otherwise; 'auto' is accepted as a synonym for it.",
 )
 @click.option("--score-column", help="Column holding the scores. Name or index. Default: first column.")
 @click.option("--label-column", help="Column holding the classes. Name or index. Default: second column.")

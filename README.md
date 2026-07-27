@@ -40,7 +40,7 @@ underneath — which of the five search algorithms runs, and how hard it looks.
 ## Table of contents
 
 - [Project description](#project-description)
-  - [An oracle mechanism](#an-oracle-mechanism)
+  - [Choosing an algorithm](#choosing-an-algorithm)
 - [Implemented algorithms](#implemented-algorithms)
   - [Exact sweep](#exact-sweep)
   - [Linear search](#linear-search)
@@ -87,26 +87,51 @@ returns:
     samples​. If multiple thresholds give the optimal fraction, return any threshold.
 ```
 
-### An oracle mechanism
+### Choosing an algorithm
 
-> [!WARNING]
-> **Deprecated — to be removed in `0.5.0`.** The oracle existed to choose between
-> algorithms that traded accuracy against input size. [Exact sweep](#exact-sweep) settled
-> that question: it is exact at every size and cheaper than everything it chose between,
-> so there is no longer a decision to delegate. In `0.5.0` the mechanism goes away and
-> `exact` becomes the plain default. Nothing is required of you if you use the default
-> today — you already get `exact`. If you pass `algorithm='auto'` explicitly, it will keep
-> working as an alias for the default; any code reading the routing behaviour itself
-> should select an algorithm by name instead.
+[Exact sweep](#exact-sweep) is the default, and is what you want unless you have a specific
+reason otherwise: it returns the best threshold that exists, and does so faster than any of
+the approximations. Pick a different one by name when you want to:
 
-We implemented a meta-optimizer - an 'oracle' mechanism, which chooses the algorithm for you. This is the default behaviour, and can be controlled by changing the `algorithm` param of the `Thresher` constructor. See the source code of [oracle.py](https://github.com/oskar-j/thresher/blob/main/src/thresher/oracle.py) and [interface.py](https://github.com/oskar-j/thresher/blob/main/src/thresher/interface.py) for more details.
+```python
+Thresher(algorithm='grid').optimize_threshold(scores, actual_classes)
+```
 
-Since `0.4.0` it always chooses [Exact sweep](#exact-sweep), and the choice is no longer
-interesting. It used to route by input size - linear search below 1,000 rows, grid search
-below 50,000, stochastic gradient descent above that - because the only exact algorithm
-was O(n²) and stopped being affordable. Exact sweep is exact at *every* size and cheaper
-than the approximations it replaced, so there is nothing left to trade off. The other
-algorithms remain available by name.
+> [!NOTE]
+> **The oracle was removed in `0.5.0`, as announced in `0.4.0`.** It used to choose an
+> algorithm from the size of your data, because the only exact algorithm was `O(n²)` and
+> stopped being affordable — so accuracy had to be traded against volume. Exact sweep
+> removed that trade-off by being exact at every size *and* cheaper than what it replaced,
+> which left the oracle with nothing to decide.
+>
+> Nothing is required of you. If you used the default you already had `exact`, and
+> `algorithm='auto'` still works as a synonym for the default.
+
+Each algorithm declares the input size beyond which it becomes slow, and warns rather than
+making you wait to find out:
+
+```
+WARNING thresher.dispatch: Linear search is likely to be slow on 12,000 rows - it is
+usually comfortable up to about 10,000. The 'exact' algorithm is exact and O(n log n)...
+```
+
+| Algorithm | Comfortable up to | Why |
+|---|---|---|
+| `exact` | 10,000,000 | `O(n log n)` — the input size runs out before the algorithm does |
+| `sgrid` | 10,000,000 | reads only `stoch_ratio` of the data per candidate |
+| `sgd` | 2,000,000 | linear in the sampled fraction |
+| `grid` | 1,000,000 | linear, with a fixed candidate count |
+| `gen` | 100,000 | linear, but thousands of evaluations per run |
+| `ls` | 10,000 | `O(n²)` — 0.9 s at 4,000 rows becomes 18 s at 16,000 |
+
+These come from the timings in `examples/benchmark.py` on one laptop, at roughly where a
+run passes ten seconds. They are guidance, not limits — a faster machine moves them all up,
+which is why crossing one warns rather than refuses. Silence it with ordinary logging
+configuration:
+
+```python
+logging.getLogger("thresher").setLevel(logging.ERROR)
+```
 
 ## Implemented algorithms
 
@@ -227,19 +252,32 @@ computed independently by sweeping the sorted scores rather than by asking one o
 algorithms under test. 100% therefore means "found a cut-off as good as the best one that
 exists", not merely "did well".
 
-| Algorithm | Separable | Overlapping | Imbalanced | Time | Complexity |
-|---|---|---|---|---|---|
-| `exact` | **100.00%** | **100.00%** | **100.00%** | **1 ms** | **O(n log n)** |
-| `ls` | 100.00% | 100.00% | 100.00% | 266 ms | O(n²) |
-| `grid` | 99.82% | 99.98% | 100.00% | 18 ms | O(c·n) |
-| `sgrid` | 99.57% | 97.84% | 99.70% | 1 ms | O(c·r·n) |
-| `gen` | 99.62% | 98.23% | 88.64% | 117 ms | O(e·r·n) |
-| `sgd` | 99.54% | 97.01% | 88.37% | 12 ms | O(i·r·n) |
+| Algorithm | Separable | Overlapping | Imbalanced | Time | Complexity | Memory |
+|---|---|---|---|---|---|---|
+| `exact` | **100.00%** | **100.00%** | **100.00%** | **1 ms** | **O(n log n)** | **O(d)** |
+| `ls` | 100.00% | 100.00% | 100.00% | 266 ms | O(n²) | O(n) |
+| `grid` | 99.82% | 99.98% | 100.00% | 18 ms | O(c·n) | O(c) |
+| `sgrid` | 99.57% | 97.84% | 99.70% | 1 ms | O(c·r·n) | O(n) |
+| `gen` | 99.62% | 98.23% | 88.64% | 117 ms | O(e·r·n) | O(r·n) |
+| `sgd` | 99.54% | 97.01% | 88.37% | 12 ms | O(i·r·n) | O(r·n) |
 
-Where _n_ is the number of scores, _c_ the grid candidates (`10**no_of_decimal_places + 1`,
-so 101 by default), _r_ the `stoch_ratio` sample fraction, _e_ the genetic evaluations
-(`population_size × number_of_generations × number_of_iterations`) and _i_ the sgd steps
-(at most `num_of_iters`).
+Where _n_ is the number of scores, _d_ the number of **distinct** scores (never more than
+_n_, and far fewer for rounded probabilities), _c_ the grid candidates
+(`10**no_of_decimal_places + 1`, so 101 by default), _r_ the `stoch_ratio` sample fraction,
+_e_ the genetic evaluations (`population_size × number_of_generations × number_of_iterations`)
+and _i_ the sgd steps (at most `num_of_iters`).
+
+Memory is the peak extra allocation, read off the implementations. Three of the entries are
+worth a second look:
+
+- **`exact` is O(d), not O(n)** — it keeps one count per *distinct* score, not per row. If
+  your probabilities are rounded to two decimals, that is at most 101 entries whatever the
+  row count, which is why it stays cheap on very large inputs.
+- **`grid` is the only one that does not grow with the input at all** — it allocates the
+  grid and streams the data past it through a lazy `zip`.
+- **`sgrid` is O(n) despite reading only a fraction of the data.** It builds the full
+  paired list before sampling from it, so the subsampling buys time but not memory. That is
+  an implementation detail rather than something inherent to the algorithm.
 
 The top row is the short version of the whole table: **exact accuracy, at the lowest cost
 of anything here**. Every other algorithm exists because, before `0.4.0`, exactness meant
@@ -367,7 +405,7 @@ examples/         runnable usage samples
 It's possible to provide additional parameters in the `Thresher` constructor.
 
 ```python
-Thresher(algorithm='auto',
+Thresher(algorithm='exact',
          allow_parallel=True,
          verbose=False,
          progress_bar=False,
@@ -376,9 +414,9 @@ Thresher(algorithm='auto',
 
 Here is a description of what does every particular parameter do:
 
-* **algorithm** (default value: `'auto'`) - allows to manually choose the algorithm from the list of available algorithms.
-Same effect can be achieved with running the method called `set_algorithm(algorithm_name)` on the `Thresher` instance.
-The default value is 'auto', which means that the tool uses an oracle mechanism to manually choose a proper algorithm.
+* **algorithm** (default value: `'exact'`) - choose the algorithm from the list of available ones.
+The same effect can be achieved by calling `set_algorithm(algorithm_name)` on the `Thresher` instance.
+`'auto'` is accepted as a synonym for the default; it named the oracle before `0.5.0` removed it
 * **allow_parallel** (default value: `True`) - enables/disabled multiprocessing for algorithms
 * **verbose** (default value: `False`) - enables verbosity
 * **progress_bar** (default value: `False`) - shows a progress bar in the terminal (if supported by the algorithm)
@@ -572,7 +610,7 @@ Thresher(backend=RayBackend(num_shards=16)).optimize_threshold(scores, actual_cl
 ## Performance tests
 
 A very basic performance test (with 10 repeats, on a real-world [anonymized data](https://github.com/oskar-j/thresher/blob/main/examples/performance_test/milion_samples.7z) consisting of `10^6` rows) can be found in the Notebook [located here](https://github.com/oskar-j/thresher/blob/main/examples/performance_test/TresherPerformanceTest.ipynb).
-Similar experiment, but with more iterations, was conducted in the file [TresherPerformanceTestExtended.ipynb](https://github.com/oskar-j/thresher/blob/main/examples/performance_test/TresherPerformanceTestExtended.ipynb) to test the oracle.
+Similar experiment, but with more iterations, was conducted in the file [TresherPerformanceTestExtended.ipynb](https://github.com/oskar-j/thresher/blob/main/examples/performance_test/TresherPerformanceTestExtended.ipynb). Both notebooks predate `0.5.0` and exercise the oracle that used to pick an algorithm by input size; they are kept as a record of how the current thresholds were arrived at.
 
 For a head-to-head comparison of accuracy and runtime across all five algorithms, see
 [Algorithm scores](#algorithm-scores) above — that one is reproducible from

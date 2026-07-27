@@ -1,12 +1,13 @@
 """The user-facing interface: the `Thresher` class."""
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from typing import Any
 
 from thresher import algorithm
+from thresher.algorithm import DEFAULT
 from thresher.backends import get_backend
+from thresher.dispatch import run_computations
 from thresher.exceptions import NotIterableError
-from thresher.oracle import run_computations, run_oracle
 from thresher.utils import map_labels
 
 
@@ -18,29 +19,6 @@ class ThresherBase:
     """
 
     options: dict[str, Any]
-
-    def _run_oracle(self, data_traits: Mapping[str, Any]) -> algorithm.Algorithm:
-        """Resolve which algorithm to use for this call.
-
-        Args:
-            data_traits: measurements of the input, passed to the oracle when the
-                algorithm option is left at its default.
-
-        Returns:
-            The algorithm the oracle selected, or the one explicitly configured.
-        """
-        if self.options["algorithm"] == algorithm.DEFAULT:
-            if self.options["verbose"]:
-                print("Running heuristics on choosing a proper algorithm")
-            chosen_algorithm = run_oracle(data_traits)
-
-        else:
-            chosen_algorithm = self.options["algorithm"]
-
-        if self.options["verbose"]:
-            print(f"Chosen algorithm: {chosen_algorithm.full_name}")
-
-        return chosen_algorithm
 
     def _compute(
         self,
@@ -101,7 +79,7 @@ class Thresher(ThresherBase):
         super().__init__()
 
         self.options: dict[str, Any] = {
-            "algorithm": "auto",
+            "algorithm": DEFAULT.id,
             "allow_parallel": True,
             "verbose": False,
             "progress_bar": False,
@@ -122,8 +100,8 @@ class Thresher(ThresherBase):
 
         Returns:
             A dict with `name`, the algorithm's short id, and `object`, the `Algorithm`
-            itself. Note this reports what was configured: with the default `'auto'` the
-            name is `'auto'`, not whatever the oracle will go on to choose per call.
+            itself. Since 0.5.0 this is always the algorithm that will actually run: there
+            is no longer a per-call choice for it to disagree with.
         """
         current_algorithm: algorithm.Algorithm = self.options["algorithm"]
         return {"name": current_algorithm.id, "object": current_algorithm}
@@ -164,7 +142,8 @@ class Thresher(ThresherBase):
 
         Returns:
             A list of algorithm ids, or a dict of id to full name when `as_dict` is set.
-            Includes `'auto'`, which is the oracle rather than an algorithm as such.
+            Every entry is a real algorithm; `'auto'` was removed in 0.5.0 along with the
+            oracle, and survives only as a synonym of the default.
         """
         if as_dict:
             return {k: v.full_name for k, v in algorithm.available_algorithms.items()}
@@ -199,8 +178,9 @@ class Thresher(ThresherBase):
         else:
             class_values = list(actual_classes)
 
-        data_traits = {"data_length": len(score_values)}
+        chosen_algorithm: algorithm.Algorithm = self.options["algorithm"]
 
-        chosen_algorithm = self._run_oracle(data_traits)
+        if self.options["verbose"]:
+            print(f"Chosen algorithm: {chosen_algorithm.full_name}")
 
         return self._compute(chosen_algorithm, score_values, class_values)

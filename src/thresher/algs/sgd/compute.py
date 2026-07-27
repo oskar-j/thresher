@@ -2,8 +2,9 @@
 
 The curve is the ratio of mis-classifications as a function of the threshold, and the walk
 follows it downhill. It is the cheapest solver on large inputs - each step scores only a
-random subsample - which is why the oracle selects it above 50,000 rows. It is also the
-least accurate, and can settle on a local optimum.
+random subsample, which once made it the only affordable choice on very large inputs. It
+is also the least accurate, and can settle on a local optimum; `exact` is both cheaper and
+exact, so this is now of interest mainly for comparison.
 """
 
 from collections.abc import Callable, Mapping, Sequence

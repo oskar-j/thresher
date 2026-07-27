@@ -1,8 +1,8 @@
 """Linear search: evaluate every candidate threshold exactly.
 
 The most accurate solver, and the reference the others are measured against, but it costs
-O(n^2) - each of the n-1 candidate thresholds is scored against all n samples. The oracle
-picks it only for inputs of 1,000 rows or fewer.
+O(n^2) - each of the n-1 candidate thresholds is scored against all n samples. Superseded
+by `exact`, which returns the same answer, or a marginally better one, in O(n log n).
 """
 
 import multiprocessing as mp
