@@ -1382,6 +1382,15 @@ wheels = [
 ]
 
 [[package]]
+name = "py4j"
+version = "0.10.9.9"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/38/31/0b210511177070c8d5d3059556194352e5753602fa64b85b7ab81ec1a009/py4j-0.10.9.9.tar.gz", hash = "sha256:f694cad19efa5bd1dee4f3e5270eb406613c974394035e5bfc4ec1aba870b879", size = 761089, upload-time = "2025-01-15T03:53:18.624Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bd/db/ea0203e495be491c85af87b66e37acfd3bf756fd985f87e46fc5e3bf022c/py4j-0.10.9.9-py2.py3-none-any.whl", hash = "sha256:c7c26e4158defb37b0bb124933163641a2ff6e3a3913f7811b0ddbe07ed61533", size = 203008, upload-time = "2025-01-15T03:53:15.648Z" },
+]
+
+[[package]]
 name = "pygments"
 version = "2.20.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1402,6 +1411,15 @@ sdist = { url = "https://files.pythonhosted.org/packages/21/a9/5f0c535ba3b08fe09
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d6/54/da572c98c0b77626a91b5d3b89f0231d8bff5125c225420908632f8b342d/pymdown_extensions-11.0.1-py3-none-any.whl", hash = "sha256:db3943a62bab7e03af1364f0c4083e64b91fb097675a4b6cceccfbe9a77e5eb2", size = 269455, upload-time = "2026-07-02T17:59:21.271Z" },
 ]
+
+[[package]]
+name = "pyspark"
+version = "4.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "py4j" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c3/33/c987434f5d50aa802779a004ca0fd45ee4350caab50554ad7283d5a22b50/pyspark-4.2.0.tar.gz", hash = "sha256:5ad689d53570ee1674193fd4f9bda065f0db3be9363a27d2a3406cc457b70b61", size = 450129423, upload-time = "2026-07-14T22:16:46Z" }
 
 [[package]]
 name = "pytest"
@@ -1908,7 +1926,7 @@ wheels = [
 
 [[package]]
 name = "thresher-py"
-version = "0.5.3"
+version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -1923,6 +1941,9 @@ dependencies = [
 ray = [
     { name = "ray" },
 ]
+spark = [
+    { name = "pyspark" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -1931,6 +1952,7 @@ dev = [
     { name = "pandas-stubs", version = "2.3.3.260113", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas-stubs", version = "3.0.3.260530", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pre-commit" },
+    { name = "pyspark" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ray", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or sys_platform == 'linux'" },
@@ -1947,9 +1969,10 @@ requires-dist = [
     { name = "click", specifier = ">=8.0" },
     { name = "numpy" },
     { name = "pandas" },
+    { name = "pyspark", marker = "extra == 'spark'", specifier = ">=3.4" },
     { name = "ray", marker = "extra == 'ray'", specifier = ">=2.9" },
 ]
-provides-extras = ["ray"]
+provides-extras = ["ray", "spark"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1957,6 +1980,7 @@ dev = [
     { name = "openpyxl" },
     { name = "pandas-stubs" },
     { name = "pre-commit" },
+    { name = "pyspark", specifier = ">=3.4" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ray", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or sys_platform == 'linux'", specifier = ">=2.9" },

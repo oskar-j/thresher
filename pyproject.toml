@@ -1,6 +1,6 @@
 [project]
 name = "thresher-py"
-version = "0.5.3"
+version = "0.6.0"
 description = "Find threshold for fine-tuning output from predict_proba"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -29,6 +29,9 @@ thresher = "thresher.cli:main"
 # Ray publishes wheels for Linux (x86_64 and aarch64) and Apple Silicon only - there is no
 # macOS x86_64 wheel, so `pip install thresher-py[ray]` cannot work on an Intel Mac.
 ray = ["ray>=2.9"]
+# PySpark ships as an sdist carrying the Spark distribution, so installing it is slow and
+# large. It also needs a JVM on the machine, which pip cannot provide.
+spark = ["pyspark>=3.4"]
 
 [project.urls]
 # GitHub Pages, because PyPI can verify it. A package uploaded through Trusted Publishing
@@ -54,6 +57,7 @@ dev = [
     # Mac; the Ray tests skip themselves when the import fails, and CI runs on Linux where
     # Ray installs, so they are exercised for real there.
     "ray>=2.9; sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
+    "pyspark>=3.4",
 ]
 # Kept out of `dev` because the docs toolchain is large and only the docs build needs it.
 docs = [
@@ -141,4 +145,11 @@ ignore_missing_imports = true
 # the ImportError, which is the behaviour that matters.
 [[tool.mypy.overrides]]
 module = ["ray.*"]
+ignore_missing_imports = true
+
+# PySpark is optional too, and is a 450 MB sdist - large enough that adding it to the
+# pre-commit mypy hook's `additional_dependencies` would dominate that hook's runtime for
+# one module. It is absent there, so the import has to be allowed to go unresolved.
+[[tool.mypy.overrides]]
+module = ["pyspark.*"]
 ignore_missing_imports = true

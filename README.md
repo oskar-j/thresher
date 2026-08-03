@@ -64,6 +64,7 @@ underneath — which of the seven search algorithms runs, and how hard it looks.
 - [Handling errors](#handling-errors)
 - [Command line](#command-line)
 - [Running on Ray](#running-on-ray)
+- [Running on Spark](#running-on-spark)
 - [Performance tests](#performance-tests)
 - [Future work](#future-work)
 
@@ -639,6 +640,75 @@ Thresher(backend=RayBackend(num_shards=16)).optimize_threshold(scores, actual_cl
 > [!NOTE]
 > Ray publishes wheels for Linux and Apple Silicon, but **not for macOS x86_64** — the
 > `[ray]` extra cannot be installed on an Intel Mac. Use the default backend there.
+
+## Running on Spark
+
+Ray distributes the library's ordinary API: you still hand it two sequences that are
+already in memory. That is the wrong shape for data sitting in HDFS, S3 or a Delta table.
+Collecting a billion rows onto one machine to sort them is precisely what having a cluster
+is meant to avoid.
+
+`SparkThresher` takes a DataFrame and two column names instead, and never collects the
+rows:
+
+```
+pip install 'thresher-py[spark]'
+```
+
+```python
+from thresher.spark import SparkThresher
+
+df = spark.read.parquet("s3://predictions/2026-08/")
+
+threshold = SparkThresher().optimize_threshold(df, score_col="probability", label_col="label")
+```
+
+Nothing else about the calling code changes — `algorithm_params`, `labels` and `verbose`
+mean what they mean everywhere else:
+
+```python
+SparkThresher("hist", {"no_of_bins": 4096}, labels=(0, 1), verbose=True).optimize_threshold(df)
+```
+
+### How the work is split
+
+This is the map-reduce the problem actually reduces to. Spark does one `groupBy` and a
+pair of sums, which is a shuffle of counts rather than of rows; what comes back to the
+driver is a summary whose size is set by the *resolution*, not by the input:
+
+```
+a billion rows  ->  [ Spark: group and count ]  ->  ~1,024 rows  ->  [ driver: sweep ]
+```
+
+The driver then runs the identical sweep the in-memory algorithms use — literally the same
+function, not a reimplementation of it — over that summary. So the same rule holds here as
+for Ray: **it changes where the counting happens, never the answer.** The tests assert a
+Spark run returns the same `float` as the in-memory run, and that repartitioning the
+DataFrame does not move it.
+
+### What runs on Spark
+
+| Algorithm | On Spark | Summary sent to the driver |
+|---|---|---|
+| `hist` (default) | **yes** | One row per bin — `no_of_bins` rows however large the input |
+| `exact` | **yes** | One row per *distinct* score |
+| `ls`, `grid`, `sgrid`, `gen`, `sgd` | no | — |
+
+`hist` is the default here, unlike everywhere else in the library, and it is the one to
+reach for: its summary is bounded by the bin count, so a billion rows and a million rows
+cost the driver exactly the same. `exact` is available and is exactly what its name says,
+but it returns one row per distinct score — fine for rounded probabilities, expensive for
+64-bit floats that are all different. It logs a warning if that count gets large.
+
+The other five are refused outright rather than quietly run on a sample or on the driver.
+`ls` is quadratic in candidates, and `sgrid`, `gen` and `sgd` each draw their own random
+subsamples, so distributing them would change the answer and not merely its location. Ask
+for one and you get a `ConfigurationError` saying so.
+
+> [!NOTE]
+> PySpark ships as a 450 MB sdist carrying the Spark distribution itself, so installing
+> the `[spark]` extra is slow. It also needs a JVM (Java 17+ for PySpark 4.x), which pip
+> cannot install for you.
 
 ## Performance tests
 

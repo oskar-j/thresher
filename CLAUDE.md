@@ -16,6 +16,11 @@ Dependencies are managed with [uv](https://docs.astral.sh/uv/) via `pyproject.to
 uv sync --group dev
 ```
 
+The first `uv sync --group dev` after 0.6.0 is slow: the group carries `pyspark`, which is
+a 450 MB sdist with no wheel. It is there rather than in a group of its own so the Spark
+tests run on every CI matrix job and count towards coverage; without them
+`src/thresher/spark.py` is uncovered and the 90% floor is missed.
+
 `openpyxl` lives in the `dev` group and is mandatory for the tests: pandas needs it to read the `.xlsx` fixtures (`xlrd` 2.x cannot read `.xlsx` at all). Without the dev group, every test touching the medium fixture fails with ``ImportError: `Import openpyxl` failed``.
 
 ### Tests
@@ -23,7 +28,7 @@ uv sync --group dev
 pytest, runnable from anywhere in the repo (0.3.0 moved the fixtures to paths resolved relative to `tests/conftest.py`; before that the suite only worked from inside the old `thresher/tests/`):
 
 ```bash
-uv run pytest                                   # 65 tests
+uv run pytest                                   # 466 tests
 uv run pytest tests/test_validation.py -v       # one module
 uv run pytest -k "sgd and separable"            # by expression
 uv run --isolated --python 3.14 --group dev pytest   # a specific interpreter
@@ -154,6 +159,41 @@ User-supplied `algorithm_params` reach solvers as an `alg_options` mapping whose
 Only `exact`, `ls` and `grid` are distributed. `sgrid` and `gen` draw a fresh random subsample per evaluation, so sharding would change which samples are read and therefore the answer; `sgd` is a sequential walk. Those three run in-process whatever backend is passed — do not "fix" that without accepting a semantic change.
 
 **Ray cannot be installed on macOS x86_64** — there is no wheel. The dev dependency carries a marker excluding that platform, `tests/test_backends.py` skips its Ray class via `importorskip`, and CI (Linux) is where those tests actually execute. If you are on an Intel Mac, a green local run has *not* exercised the Ray path; check CI.
+
+### The Spark interface (`spark.py`)
+
+A different shape from the backends above, and worth not confusing with them. A backend
+distributes the *ordinary* API, which still needs the data in memory first.
+`SparkThresher` takes a DataFrame and two column names and never collects the rows, which
+is the only useful thing to do with data that lives in HDFS or S3.
+
+The design is one sentence: **Spark aggregates, the driver decides.** One `groupBy` plus a
+pair of sums returns a summary sized by the *resolution* rather than the row count, and
+the driver sweeps that summary using `sweep_bins` / `sweep_class_counts` — the same
+functions `hist` and `exact` call in memory, which is what makes the results identical
+rather than close. `tests/test_spark.py` asserts equality of the returned `float`, and
+that repartitioning does not move it. Do not reimplement a sweep here; if the Spark path
+and the in-memory path ever stop sharing that code, the guarantee is gone.
+
+Only `hist` and `exact` are offered, for the reason only some algorithms distribute on
+Ray: their work *is* an aggregation. `hist` is the default here (not `exact`, unlike
+everywhere else) because its summary is bounded by `no_of_bins` however large the input.
+The other five raise `ConfigurationError` — refused rather than silently run on the
+driver.
+
+PySpark is an optional extra. `thresher.spark` imports without it — the only
+module-level `pyspark` import is under `TYPE_CHECKING` — and `_require_pyspark()` turns
+its absence into `BackendDependencyError` when a `SparkThresher` is constructed. Keep it
+that way: an unconditional import would make the module unusable for anyone without the
+extra.
+
+Two practical notes. PySpark is a **450 MB sdist** with no wheel, so `uv sync --group dev`
+is slow the first time, and it is deliberately *not* in the pre-commit mypy hook's
+`additional_dependencies` — a `pyspark.*` `ignore_missing_imports` override covers it
+instead. And it needs a JVM (Java 17+ for PySpark 4.x), which CI pins with
+`actions/setup-java` rather than trusting whatever the runner image ships. The test
+fixture sets `spark.driver.bindAddress`, without which Spark picks an interface it cannot
+always bind to and dies after sixteen retries.
 
 ### `hist`, and why `optimize_threshold` stopped copying
 

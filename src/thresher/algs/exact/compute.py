@@ -75,12 +75,44 @@ def run(
     # The sweep needs only the class counts at each distinct score, never the samples
     # themselves - which is precisely what makes it distributable.
     counts = (backend or LocalBackend()).class_counts_by_score(scores, actual_classes)
+
+    if verbose:
+        print(f"Sweeping {len(counts)} distinct scores from {len(scores)} samples for the exact optimum.")
+
+    best_threshold, best_correct = sweep_class_counts(counts, progress_bar=progress_bar)
+
+    if verbose:
+        print(f"Best threshold {best_threshold} classifies {best_correct}/{len(scores)} correctly.")
+
+    return best_threshold
+
+
+def sweep_class_counts(
+    counts: Mapping[float, tuple[int, int]], progress_bar: bool = False
+) -> tuple[float, int]:
+    """Find the best threshold from class counts, without seeing the samples.
+
+    The whole of the exact search lives here. It takes only "how many of each class sit at
+    each distinct score", which is a summary bounded by the number of distinct scores
+    rather than by the number of rows - so whatever produced those counts, in this process
+    or across a cluster, the decision is made by this one function and the answers agree.
+
+    Args:
+        counts: distinct score mapped to its `(negatives, positives)`.
+        progress_bar: draw a progress bar on stdout while sweeping.
+
+    Returns:
+        The best threshold and how many samples it classifies correctly.
+
+    Raises:
+        InsufficientDataError: if there are no counts to sweep.
+    """
+    if not counts:
+        raise InsufficientDataError("At least one score is needed to evaluate a threshold.")
+
     ordered = sorted(counts)
     distinct = len(ordered)
     total_positive = sum(positives for _, positives in counts.values())
-
-    if verbose:
-        print(f"Sweeping {distinct} distinct scores from {len(scores)} samples for the exact optimum.")
 
     negatives_behind = 0
     positives_behind = 0
@@ -118,7 +150,4 @@ def run(
         best_correct = total_positive
         best_threshold = math.nextafter(ordered[0], -math.inf)
 
-    if verbose:
-        print(f"Best threshold {best_threshold} classifies {best_correct}/{len(scores)} correctly.")
-
-    return best_threshold
+    return best_threshold, best_correct
