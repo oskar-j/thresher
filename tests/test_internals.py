@@ -5,7 +5,9 @@ utilities, and everything guarded by `verbose` or `progress_bar`. They are teste
 their own terms - what each returns or prints - rather than being exercised incidentally.
 """
 
+import importlib.metadata
 import math
+import re
 from collections.abc import Callable
 
 import pandas as pd
@@ -247,3 +249,19 @@ class TestDispatch:
                 allow_parallel=False,
                 alg_options={},
             )
+
+
+class TestPackageVersion:
+    def test_version_matches_the_installed_distribution(self) -> None:
+        """`__version__` must report the distribution's version, not a hardcoded copy.
+
+        `pyproject.toml` is the single source of truth, so the attribute has to come from
+        the installed metadata - a literal here would drift on the next release.
+        """
+        assert thresher.__version__ == importlib.metadata.version("thresher-py")
+
+    def test_version_is_release_shaped(self) -> None:
+        assert re.fullmatch(r"\d+\.\d+\.\d+", thresher.__version__)
+
+    def test_version_is_exported(self) -> None:
+        assert "__version__" in thresher.__all__

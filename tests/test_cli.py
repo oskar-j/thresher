@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+import thresher
 from thresher import algorithm
 from thresher.cli import main
 
@@ -96,6 +97,9 @@ def test_version(runner: CliRunner) -> None:
 
     assert result.exit_code == 0
     assert "thresher" in result.output
+    # The command and the library must report the same version - both read the
+    # distribution metadata, and `thresher.__version__` exists so that fact is importable.
+    assert thresher.__version__ in result.output
 
 
 class TestErrors:
