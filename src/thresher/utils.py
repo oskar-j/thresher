@@ -6,6 +6,7 @@ from itertools import tee
 from typing import Any, TypeVar
 
 from thresher.exceptions import (
+    LABEL_MAPPING_LENGTH,
     LABEL_MAPPING_TYPE,
     LABEL_NOT_IN_MAPPING,
     EmptyInputError,
@@ -82,6 +83,33 @@ def validate_actual_classes(actual_classes: Sequence[int]) -> None:
         raise SingleClassError(next(iter(present)))
 
 
+def validate_label_mapping(mapping: Any) -> list[Any] | tuple[Any, ...]:
+    """Check that a `labels` option is a usable mapping before anything relies on it.
+
+    Shared between `Thresher.__init__`, which validates the option the moment it is
+    given, and `map_labels`, which is what a caller mutating the live options dict
+    afterwards still runs into.
+
+    Args:
+        mapping: the value of the `labels` constructor option.
+
+    Returns:
+        The mapping itself, now known to be an indexable two-item pair.
+
+    Raises:
+        LabelMappingError: if `mapping` is not a list or tuple, or does not hold exactly
+            two values. It is a `TypeError`.
+    """
+    # A mapping has to be indexable in a defined order - a set, for example, has no
+    # "first" - and needs one value per class, no more and no fewer. A one-item mapping
+    # previously fell through to a bare IndexError inside map_labels.
+    if not isinstance(mapping, list | tuple):
+        raise LabelMappingError(LABEL_MAPPING_TYPE.format(got=type(mapping).__name__))
+    if len(mapping) != 2:
+        raise LabelMappingError(LABEL_MAPPING_LENGTH.format(count=len(mapping)))
+    return mapping
+
+
 def map_labels(labels: Iterable[Any], mapping: Iterable[Any]) -> Iterator[int]:
     """Translate caller-supplied labels into the internal -1 / 1 pair.
 
@@ -94,18 +122,14 @@ def map_labels(labels: Iterable[Any], mapping: Iterable[Any]) -> Iterator[int]:
         -1 for each label matching `mapping[0]`, 1 for each matching `mapping[1]`.
 
     Raises:
-        LabelMappingError: if `mapping` is not a list or tuple, or if a label appears
-            that is in neither position of the mapping. It is a `TypeError`.
+        LabelMappingError: if `mapping` is not a two-item list or tuple, or if a label
+            appears that is in neither position of the mapping. It is a `TypeError`.
     """
-    # Declared as Iterable because the caller only knows that much about the option, but
-    # a mapping has to be indexable in a defined order - hence the check below, which
-    # also narrows the type for the indexing that follows.
-    if not isinstance(mapping, list | tuple):
-        raise LabelMappingError(LABEL_MAPPING_TYPE.format(got=type(mapping).__name__))
+    pair = validate_label_mapping(mapping)
     for label in labels:
-        if label == mapping[0]:
+        if label == pair[0]:
             yield NEGATIVE_LABEL
-        elif label == mapping[1]:
+        elif label == pair[1]:
             yield POSITIVE_LABEL
         else:
             raise LabelMappingError(LABEL_NOT_IN_MAPPING)
