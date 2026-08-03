@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-03
+
+### Added
+
+- `thresher.__version__` - the installed package version, importable at last ([#40]).
+  It is read from the distribution metadata, so `pyproject.toml` stays the single source
+  of truth, and it always matches what `thresher --version` prints - the command was
+  already versioned; the library now admits to one too.
+
+### Fixed
+
+- The `[Unreleased]` compare link at the foot of this file still pointed at `v0.5.3`;
+  it now moves forward with each release again.
+
+[#40]: https://github.com/oskar-j/thresher/issues/40
+
 ## [0.6.0] - 2026-08-03
 
 ### Added
@@ -731,7 +747,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.5.3...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/oskar-j/thresher/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/oskar-j/thresher/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/oskar-j/thresher/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/oskar-j/thresher/compare/v0.5.1...v0.5.2
