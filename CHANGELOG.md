@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-08-03
+
+### Fixed
+
+- `Thresher(...)` rejects option names it does not recognise, with a
+  `ConfigurationError` listing the valid ones ([#33]). A mistyped name -
+  `Thresher(algoritm='gen')` - was previously merged into the options dict and never
+  read, so the run silently used the defaults the caller believed they had changed.
+- A malformed `labels` option is rejected when the object is built, rather than
+  discarded: anything that is not a two-item list or tuple raises `LabelMappingError`.
+  Previously a non-iterable value was ignored in silence - and the eventual error told
+  the caller to declare the very option they had already declared - while a one-item
+  mapping died later as a bare `IndexError` inside `map_labels`. `labels=None` stays
+  accepted and means no mapping.
+- A non-string `algorithm` raises `UnknownAlgorithmError` as the constructor documents,
+  instead of escaping as a bare `AttributeError` from `.lower()`.
+- `NotIterableError` names the argument that is actually at fault, and carries it as an
+  `attribute`; it used to blame "scores" even when `actual_classes` was the one that
+  could not be iterated.
+
+[#33]: https://github.com/oskar-j/thresher/issues/33
+
 ## [0.6.1] - 2026-08-03
 
 ### Added
@@ -745,7 +767,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/oskar-j/thresher/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/oskar-j/thresher/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/oskar-j/thresher/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/oskar-j/thresher/compare/v0.5.2...v0.5.3

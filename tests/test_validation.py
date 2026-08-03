@@ -73,7 +73,9 @@ def test_non_iterable_arguments(argument: str) -> None:
     kwargs: dict[str, object] = {"scores": [0.1, 0.2], "actual_classes": [-1, 1]}
     kwargs[argument] = 7  # type: ignore[assignment]
 
-    with pytest.raises(AttributeError):
+    # The message must blame the argument that is actually at fault - it used to name
+    # "scores" whichever of the two was passed wrong.
+    with pytest.raises(AttributeError, match=argument):
         thresher.Thresher().optimize_threshold(**kwargs)  # type: ignore[arg-type]
 
 
@@ -163,3 +165,61 @@ class TestMissingLabels:
     def test_real_labels_are_still_reported_as_unmapped(self) -> None:
         with pytest.raises(ValueError, match="labels"):
             thresher.Thresher().optimize_threshold([0.1, 0.9], [0, 1])
+
+
+class TestConstructorOptions:
+    """Mistyped or malformed constructor options fail at construction, fixed in 0.6.2.
+
+    A wrong option name used to be merged into the options dict and never read, so
+    `Thresher(algoritm='gen')` silently ran the default algorithm - the caller believed
+    they had configured a run they had not.
+    """
+
+    def test_a_mistyped_option_name_is_rejected(self) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            thresher.Thresher(algoritm="gen")
+
+        message = str(excinfo.value)
+        assert "algoritm" in message
+        # the message should list what the caller could have used instead
+        assert "'algorithm'" not in message.split("Valid options")[0]
+        assert "algorithm" in message.split("Valid options")[1]
+
+    def test_every_documented_option_is_still_accepted(self) -> None:
+        t = thresher.Thresher(
+            algorithm="exact",
+            allow_parallel=False,
+            verbose=False,
+            progress_bar=False,
+            algorithm_params={},
+            labels=(0, 1),
+            backend="local",
+        )
+
+        assert t.optimize_threshold([0.1, 0.9], [0, 1]) == pytest.approx(0.5)
+
+    def test_a_non_string_algorithm_is_a_value_error(self) -> None:
+        # This used to escape as a bare AttributeError from `.lower()`, which the
+        # constructor's documented contract (and the CLI's handlers) never mention.
+        with pytest.raises(ValueError):
+            thresher.Thresher(algorithm=123)
+
+        with pytest.raises(ValueError):
+            thresher.Thresher().set_algorithm(None)  # type: ignore[arg-type]
+
+    def test_non_iterable_labels_are_rejected_at_construction(self) -> None:
+        # Previously discarded in silence; the eventual error then told the caller to do
+        # the thing they had already done.
+        with pytest.raises(TypeError, match="list or a tuple"):
+            thresher.Thresher(labels=5)
+
+    @pytest.mark.parametrize("mapping", [(0,), (0, 1, 2)])
+    def test_labels_of_the_wrong_length_are_rejected(self, mapping: tuple[int, ...]) -> None:
+        # A one-item mapping previously reached map_labels and died as a bare IndexError.
+        with pytest.raises(TypeError, match="exactly two"):
+            thresher.Thresher(labels=mapping)
+
+    def test_labels_none_means_no_mapping(self) -> None:
+        result = thresher.Thresher(labels=None).optimize_threshold([0.1, 0.9], [-1, 1])
+
+        assert result == pytest.approx(0.5)

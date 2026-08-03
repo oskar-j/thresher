@@ -7,8 +7,15 @@ from thresher import algorithm
 from thresher.algorithm import DEFAULT
 from thresher.backends import get_backend
 from thresher.dispatch import run_computations
-from thresher.exceptions import NotIterableError
-from thresher.utils import map_labels
+from thresher.exceptions import UNKNOWN_OPTIONS, ConfigurationError, NotIterableError
+from thresher.utils import map_labels, validate_label_mapping
+
+#: Every option `Thresher.__init__` accepts. Anything else is a mistyped name, and a
+#: mistyped name is never harmless here: it leaves the default silently in place, so the
+#: caller believes they configured a run they did not.
+KNOWN_OPTIONS = frozenset(
+    {"algorithm", "allow_parallel", "verbose", "progress_bar", "algorithm_params", "labels", "backend"}
+)
 
 
 class ThresherBase:
@@ -69,10 +76,15 @@ class Thresher(ThresherBase):
         Args:
             **kwargs: any of the documented options - 'algorithm', 'allow_parallel',
                 'verbose', 'progress_bar', 'algorithm_params', 'labels' and 'backend'.
+                `labels=None` is accepted and means no mapping, the same as leaving the
+                option out.
 
         Raises:
-            ConfigurationError: if 'algorithm' names no known algorithm, or 'backend' no
-                known backend. It is a `ValueError`.
+            ConfigurationError: if an option is passed whose name is not one of the
+                documented seven, if 'algorithm' names no known algorithm, or 'backend'
+                no known backend. It is a `ValueError`.
+            LabelMappingError: if 'labels' is given but is not a two-item list or tuple.
+                It is a `TypeError`.
             BackendDependencyError: if 'backend' is 'ray' and Ray is not installed. It is
                 an `ImportError`.
         """
@@ -87,12 +99,23 @@ class Thresher(ThresherBase):
             "backend": "local",
         }
 
+        unknown_options = set(kwargs) - KNOWN_OPTIONS
+        if unknown_options:
+            raise ConfigurationError(
+                UNKNOWN_OPTIONS.format(
+                    unknown=", ".join(sorted(repr(name) for name in unknown_options)),
+                    valid=", ".join(sorted(KNOWN_OPTIONS)),
+                )
+            )
+
         self.options.update(kwargs)
 
         self.options["algorithm"] = algorithm.retrieve_by_alias(self.options["algorithm"])
-        # Resolve now rather than at optimize_threshold time, so a bad backend name - or a
-        # missing Ray - is reported when the object is built, not several seconds into a
-        # long run.
+        # Resolve and validate now rather than at optimize_threshold time, so a bad
+        # backend name - or a missing Ray, or an unusable labels pair - is reported when
+        # the object is built, not several seconds into a long run.
+        if self.options.get("labels") is not None:
+            validate_label_mapping(self.options["labels"])
         get_backend(self.options["backend"])
 
     def get_current_algorithm(self) -> dict[str, Any]:
@@ -162,15 +185,15 @@ class Thresher(ThresherBase):
             Where several thresholds tie, any one of them may be returned.
 
         Raises:
-            NotIterableError: if either argument is not iterable. It is an
-                `AttributeError`.
+            NotIterableError: if either argument is not iterable, naming the offending
+                one. It is an `AttributeError`.
             InvalidInputError: if the labels are empty, single-class, outside (-1, 1), or
                 a different length from the scores. It is a `ValueError`.
         """
         if not isinstance(scores, Iterable):
-            raise NotIterableError
+            raise NotIterableError("scores")
         if not isinstance(actual_classes, Iterable):
-            raise NotIterableError
+            raise NotIterableError("actual_classes")
 
         # Materialise only what has to be. Copying a caller's list costs memory
         # proportional to the input, which defeats the algorithms whose own allocation
@@ -180,7 +203,7 @@ class Thresher(ThresherBase):
         # solvers need; anything else is consumed into a list as before.
         score_values: Sequence[float] = scores if isinstance(scores, Sequence) else list(scores)
         class_values: Sequence[int]
-        if ("labels" in self.options) and (isinstance(self.options["labels"], Iterable)):
+        if self.options.get("labels") is not None:
             class_values = list(map_labels(actual_classes, self.options["labels"]))
         elif isinstance(actual_classes, Sequence):
             class_values = actual_classes

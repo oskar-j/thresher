@@ -100,9 +100,13 @@ def retrieve_by_alias(name: str) -> Algorithm:
         The matching `Algorithm` from `available_algorithms`.
 
     Raises:
-        UnknownAlgorithmError: if the name matches nothing. It is a `ValueError`, and
-            carries `.name` and `.available` alongside the message.
+        UnknownAlgorithmError: if the name matches nothing - including anything that is
+            not a string at all, which previously escaped as a bare `AttributeError`
+            from `.lower()`. It is a `ValueError`, and carries `.name` and `.available`
+            alongside the message.
     """
+    if not isinstance(name, str):
+        raise UnknownAlgorithmError(name, available_algorithms)
     name = name.lower()
     try:
         return available_algorithms[name]

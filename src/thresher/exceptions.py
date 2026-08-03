@@ -26,8 +26,14 @@ existed.
 from collections.abc import Iterable
 from typing import Any
 
-NOT_IMPLEMENTED_ERROR = 'The "scores" attribute is not an Iterable! Please provide a list-like object'
+NOT_ITERABLE = 'The "{attribute}" attribute is not an Iterable! Please provide a list-like object'
+NOT_IMPLEMENTED_ERROR = NOT_ITERABLE.format(attribute="scores")
 UNKNOWN_ALGORITHM = "Unknown algorithm. Run get_supported_algorithms() to get a list of available algorithms."
+
+UNKNOWN_OPTIONS = (
+    "Unknown option(s) passed to Thresher: {unknown}. Valid options are: {valid}. "
+    "A mistyped name used to be accepted in silence, leaving the default in place."
+)
 
 UNKNOWN_ALGORITHM_NAME = (
     "Unknown algorithm {name!r}. Available algorithms are: {available}. "
@@ -60,6 +66,7 @@ MISSING_LABELS = (
 EMPTY_INPUT = '"scores" and "actual_classes" are empty - there is nothing to optimize.'
 
 LABEL_MAPPING_TYPE = 'The "labels" option must be a list or a tuple, got {got}.'
+LABEL_MAPPING_LENGTH = 'The "labels" option needs exactly two values, negative label first, got {count}.'
 LABEL_NOT_IN_MAPPING = "Value not found in the mapping - map_labels() cannot map label classes."
 
 
@@ -81,11 +88,12 @@ class ConfigurationError(ThresherError, ValueError):
 class UnknownAlgorithmError(ConfigurationError):
     """No algorithm goes by that name, or any of its synonyms."""
 
-    def __init__(self, name: str, available: Iterable[str]) -> None:
+    def __init__(self, name: Any, available: Iterable[str]) -> None:
         """Record what was asked for and what would have worked.
 
         Args:
-            name: the name that matched nothing.
+            name: the name that matched nothing. Usually a mistyped string, but anything
+                arrives here - a non-string is as unknown as a wrong spelling.
             available: the algorithm ids that would have.
         """
         self.name = name
@@ -190,8 +198,15 @@ class NotIterableError(ThresherError, AttributeError):
     for no practical gain.
     """
 
-    def __init__(self, message: str = NOT_IMPLEMENTED_ERROR) -> None:
-        super().__init__(message)
+    def __init__(self, attribute: str = "scores") -> None:
+        """Record which argument was not iterable, and name it in the message.
+
+        Args:
+            attribute: the offending argument - `"scores"` or `"actual_classes"`. The
+                default keeps the historical wording, which only ever blamed the former.
+        """
+        self.attribute = attribute
+        super().__init__(NOT_ITERABLE.format(attribute=attribute))
 
 
 class BackendDependencyError(ThresherError, ImportError):
