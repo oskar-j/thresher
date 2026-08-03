@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-03
+
+### Added
+
+- **An Apache Spark interface** - `thresher.spark.SparkThresher`, which takes a DataFrame
+  and two column names rather than two in-memory sequences, and never collects the rows.
+
+  The Ray backend distributes the ordinary API, which still requires the data to be in
+  memory first. That is the wrong shape for data living in HDFS, S3 or a Delta table:
+  collecting a billion rows onto one machine to sort them is what having a cluster is
+  supposed to avoid.
+
+  ```python
+  from thresher.spark import SparkThresher
+
+  SparkThresher().optimize_threshold(df, score_col="probability", label_col="label")
+  ```
+
+  The problem reduces to a map-reduce, and this takes that reduction literally. Spark runs
+  one `groupBy` and a pair of sums - a shuffle of counts, not of rows - and returns a
+  summary sized by the *resolution* rather than by the row count. The driver then sweeps
+  that summary:
+
+  ```
+  a billion rows  ->  [ Spark: group and count ]  ->  ~1,024 rows  ->  [ driver: sweep ]
+  ```
+
+- `hist` and `exact` are the two algorithms offered, for the same reason only some
+  algorithms distribute on Ray: their work *is* an aggregation. `hist` is the default here
+  and groups by bin index, so its summary is `no_of_bins` rows however large the input;
+  `exact` groups by distinct score and warns when it is collecting more than a million of
+  them. `ls`, `grid`, `sgrid`, `gen` and `sgd` raise `ConfigurationError` rather than
+  quietly running on a sample or on the driver - `ls` is quadratic in candidates, and the
+  other three draw their own random subsamples, so distributing them would change the
+  answer and not merely where it was computed.
+
+- `pyspark>=3.4` as an optional extra, `pip install 'thresher-py[spark]'`. It is not a
+  runtime dependency: `thresher.spark` can be imported without it, and reports its absence
+  as `BackendDependencyError` when a `SparkThresher` is built.
+
+### Changed
+
+- The deciding half of both supported algorithms is now a reusable function over counts -
+  `sweep_bins` in `algs/histogram/compute.py` and `sweep_class_counts` in
+  `algs/exact/compute.py`. The Spark path calls those same functions rather than
+  reimplementing the sweep, which is what makes the results identical instead of merely
+  close. `tests/test_spark.py` asserts a distributed run returns the same `float` as the
+  in-memory run, including on data full of ties, and that repartitioning to 1, 3 or 8
+  partitions does not move it.
+
+- CI pins a Temurin 17 JDK for the test matrix, since PySpark 4.x needs Java 17 or newer
+  and the runner image's JDK is not something to rely on by accident.
+
+### Fixed
+
+- The documentation home page still advertised six algorithms; the histogram sweep added
+  in 0.5.3 made it seven.
+
 ## [0.5.3] - 2026-07-27
 
 ### Added
@@ -672,6 +730,7 @@ same as in 0.2.3. This release is about the shape of the project.
 - Evolutionary (genetic) algorithm.
 
 [Unreleased]: https://github.com/oskar-j/thresher/compare/v0.5.3...HEAD
+[0.6.0]: https://github.com/oskar-j/thresher/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/oskar-j/thresher/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/oskar-j/thresher/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/oskar-j/thresher/compare/v0.5.0...v0.5.1

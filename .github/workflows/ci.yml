@@ -41,11 +41,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # PySpark runs on the JVM, and 4.x needs Java 17 or newer. The runner image happens
+      # to ship a JDK, but pinning one here means an image update cannot quietly change
+      # which - or remove it - and take tests/test_spark.py down with it.
+      - name: Set up the JDK PySpark needs
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
 
+      # The dev group carries pyspark, a 450 MB sdist, so this step is slower than it
+      # looks. It buys the Spark interface being exercised on every Python version rather
+      # than only the one a dedicated job would pick.
       - name: Install the project and its dev dependencies
         run: uv sync --group dev
 

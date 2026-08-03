@@ -39,15 +39,15 @@ $ thresher scores.csv
     `O(n log n)`, which is roughly 1,400× quicker than the exhaustive search it replaced
     at 16,000 rows, and the gap widens with every row.
 
--   **Six algorithms**
+-   **Seven algorithms**
 
-    The exact sweep plus five approximations, all selectable by name, with a
+    The exact sweep plus six approximations, all selectable by name, with a
     [measured comparison](algorithms.md#how-they-compare) of accuracy, speed and memory.
 
 -   **Scales out**
 
-    An optional [Ray backend](backends.md) spreads the counting over a cluster without
-    changing the answer.
+    An optional [Ray backend](backends.md) spreads the counting over a cluster, and
+    [Spark](spark.md) reads the data where it already lives — neither changes the answer.
 
 </div>
 

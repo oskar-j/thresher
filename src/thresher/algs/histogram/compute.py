@@ -84,6 +84,49 @@ def run(
         else:
             negatives[index] += 1
 
+    best_threshold, best_correct = sweep_bins(
+        negatives, positives, lowest=lowest, span=span, progress_bar=progress_bar
+    )
+
+    if verbose:
+        print(f"Best threshold {best_threshold} classifies {best_correct}/{len(scores)} correctly.")
+
+    return best_threshold
+
+
+def sweep_bins(
+    negatives: Sequence[int],
+    positives: Sequence[int],
+    lowest: float,
+    span: float,
+    progress_bar: bool = False,
+) -> tuple[float, int]:
+    """Find the best threshold from binned class counts.
+
+    The deciding half of the algorithm, kept separate from the counting half. It needs only
+    the per-bin totals and the range they cover, which is a summary whose size is the bin
+    count and nothing else - so whatever produced those counts, a single pass here or an
+    aggregation across a cluster, this function makes the decision and the answers agree.
+
+    Args:
+        negatives: count of negative samples in each bin, lowest bin first.
+        positives: count of positive samples in each bin, in the same order.
+        lowest: the smallest score the bins cover.
+        span: the distance from the smallest score to the largest. Zero when every score
+            is identical, in which case there is one usable bin.
+        progress_bar: draw a progress bar on stdout while sweeping.
+
+    Returns:
+        The best threshold expressible on a bin edge, and how many samples it classifies
+        correctly.
+
+    Raises:
+        InsufficientDataError: if there are no bins to sweep.
+    """
+    bins = len(negatives)
+    if bins == 0 or bins != len(positives):
+        raise InsufficientDataError("Bin counts are missing or do not line up.")
+
     total_positive = sum(positives)
 
     # Everything classified positive: the only split that needs a threshold below the data.
@@ -111,7 +154,4 @@ def run(
     if progress_bar:
         print_progress_bar(bins, bins)
 
-    if verbose:
-        print(f"Best threshold {best_threshold} classifies {best_correct}/{len(scores)} correctly.")
-
-    return best_threshold
+    return best_threshold, best_correct
