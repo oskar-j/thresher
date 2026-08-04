@@ -160,8 +160,9 @@ def run_computations(
     if chosen_algorithm == HISTOGRAM_ALGORITHM:
         return hist_compute.run(scores, actual_classes, verbose, progress_bar, alg_options)
     if chosen_algorithm == LINEAR_ALGORITHM:
-        # An explicit n_jobs asks for local multiprocessing, which predates backends and
-        # would only contend with a cluster, so a non-local backend takes precedence.
+        # An explicit n_jobs is the older way of asking for the 'mp' backend, and says the
+        # same thing, so a backend chosen deliberately takes precedence over it rather
+        # than the two competing for the same cores.
         wants_processes = allow_parallel and ("n_jobs" in alg_options) and (alg_options["n_jobs"] != 1)
         if wants_processes and resolved_backend.name == "local":
             return linear_compute.run_parallel(scores, actual_classes, verbose, alg_options["n_jobs"])

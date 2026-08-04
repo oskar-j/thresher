@@ -21,7 +21,6 @@ from thresher.algs.common.meta_optimizer import calculate_range_mean, get_mean_v
 from thresher.algs.common.stochastic import stochastic_process
 from thresher.algs.common.tools import granularity_of_scores
 from thresher.algs.grid import compute as grid_compute
-from thresher.algs.linear.compute import process_batch
 from thresher.utils import get_or_default, map_labels, pairwise, print_progress_bar
 
 Dataset = tuple[list[float], list[int]]
@@ -127,25 +126,6 @@ class TestUtils:
 
         assert "100.0%" in complete
         assert complete.endswith("\n"), "a finished bar ends the line"
-
-
-class TestLinearSearchInternals:
-    def test_process_batch_scores_one_candidate(self) -> None:
-        # Runs inside worker processes during a parallel search, so it is called directly
-        # here - coverage and assertions do not reach into a subprocess.
-        scores, actual_classes = [0.1, 0.4, 0.6, 0.9], [-1, -1, 1, 1]
-
-        threshold, accuracy = process_batch(scores, actual_classes, 0.5)
-
-        assert threshold == 0.5
-        assert accuracy == 1.0
-
-    def test_process_batch_returns_its_threshold(self) -> None:
-        # Results come back from the pool out of order, so each carries its own candidate.
-        _, accuracy = process_batch([0.1, 0.9], [-1, 1], 0.95)
-
-        assert process_batch([0.1, 0.9], [-1, 1], 0.95)[0] == 0.95
-        assert accuracy == 0.5
 
 
 class TestReporting:

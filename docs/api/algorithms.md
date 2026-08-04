@@ -16,7 +16,6 @@
 
 ::: thresher.algs.linear.compute.run
 ::: thresher.algs.linear.compute.run_parallel
-::: thresher.algs.linear.compute.process_batch
 
 ## Grid search
 

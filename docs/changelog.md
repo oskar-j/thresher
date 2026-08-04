@@ -9,6 +9,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-04
+
+### Added
+
+- **A multiprocessing backend.** `backend='mp'` spreads the counting over the CPU cores of
+  the machine you are already on:
+
+  ```python
+  from thresher import Thresher
+
+  def main():
+      Thresher(backend="mp").optimize_threshold(scores, actual_classes)
+
+  if __name__ == "__main__":   # required; see below
+      main()
+  ```
+
+  It is shaped exactly like the Ray backend, and shares its guarantee: the data is sharded
+  once, each worker counts its own shard with the same plain functions from
+  `backends/base.py`, and the driver adds the partials together. Addition is
+  order-independent, so the answer is *identical* to a local run rather than merely close -
+  asserted for `exact`, `ls` and `grid`, across several worker counts, and on data full of
+  duplicates and ties.
+
+  Unlike `ray` it needs nothing installed, `multiprocessing` being in the standard library.
+  That makes it the parallel option on macOS x86_64, where Ray publishes no wheel at all.
+
+  The same three algorithms distribute as on Ray: `sgrid` and `gen` draw a fresh random
+  subsample per evaluation and `sgd` is a sequential walk, so those three still run
+  in-process whatever backend is asked for.
+
+  `MultiprocessingBackend(num_workers=...)` configures the process count; `-1` means every
+  processor bar one. Below `min_rows_per_shard` (2,000 by default) the work stays in this
+  process, since handing it to another costs more than the counting saves.
+
+- `ParallelBootstrapError`, raised when worker processes cannot start. It is a
+  `RuntimeError`, which is what `BrokenProcessPool` - the failure it replaces - already was.
+
+### Fixed
+
+- **A parallel run in an unguarded script fails in a second instead of hanging forever**
+  ([#22]). Worker processes re-import `__main__` on spawn platforms, so a script that
+  parallelises at module level made every worker re-run it and start workers of its own.
+  `multiprocessing.Pool.map` then waited on children that would never report: no error, no
+  result, no end - the run had to be killed. The backend uses
+  `concurrent.futures.ProcessPoolExecutor`, whose `BrokenProcessPool` is translated into a
+  `ParallelBootstrapError` carrying the `__main__`-guard fix.
+
+- **`n_jobs` values that name no process count are refused** ([#22]). `0` and anything
+  below `-1` raise `ConfigurationError`; they used to print a message and carry on with one
+  process, so the warning changed nothing. Asking for more processors than the machine has
+  is clamped to what it has, rather than opening that many - `n_jobs=9999` no longer tries
+  for 9,999 processes.
+
+- **Parallelising linear search no longer changes its answer** ([#22]). `n_jobs` now runs
+  the ordinary search on the `mp` backend rather than through a second implementation. The
+  old parallel path evaluated the raw scores as thresholds where the sequential path
+  evaluates the midpoints between them, so the two returned different - equally valid -
+  answers for the same data. They now agree exactly.
+
+### Changed
+
+- An explicitly chosen backend takes precedence over `n_jobs`, which is the older spelling
+  of the same request; the two would otherwise contend for the same cores. This was already
+  the behaviour, and is now tested.
+- `linear.compute.process_batch` is removed. It existed only to be pickled into the pool it
+  no longer uses; `backends.base.tally_chunk` does that counting for every backend.
+
+[#22]: https://github.com/oskar-j/thresher/issues/22
+
 ## [0.6.4] - 2026-08-04
 
 Three defects in the approximate solvers, all of which returned a plausible number while
@@ -868,7 +938,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.6.4...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/oskar-j/thresher/compare/v0.6.4...v0.7.0
 [0.6.4]: https://github.com/oskar-j/thresher/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/oskar-j/thresher/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/oskar-j/thresher/compare/v0.6.1...v0.6.2

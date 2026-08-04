@@ -1,6 +1,6 @@
 # Backends
 
-Where the counting happens. See [Running on Ray](../backends.md) for the guide.
+Where the counting happens. See [Running in parallel](../backends.md) for the guide.
 
 ## Selecting one
 
@@ -13,6 +13,11 @@ Where the counting happens. See [Running on Ray](../backends.md) for the guide.
 ## Local
 
 ::: thresher.backends.local.LocalBackend
+
+## Multiprocessing
+
+::: thresher.backends.mp_backend.MultiprocessingBackend
+::: thresher.backends.mp_backend.resolve_worker_count
 
 ## Ray
 

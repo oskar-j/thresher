@@ -31,6 +31,7 @@ ThresherError
 ├── LabelMappingError         the `labels` option cannot map        (TypeError)
 ├── NotIterableError          scores or classes are not iterable    (AttributeError)
 ├── BackendDependencyError    an optional dependency is missing     (ImportError)
+├── ParallelBootstrapError    worker processes could not start      (RuntimeError)
 ├── AlgorithmNotWiredError    a bug in this package                 (NotImplementedError)
 └── ShardMergeError           a bug in this package                 (ValueError)
 ```

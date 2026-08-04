@@ -38,7 +38,7 @@ nav:
   - Getting started: getting-started.md
   - Algorithms: algorithms.md
   - Command line: cli.md
-  - Running on Ray: backends.md
+  - Running in parallel: backends.md
   - Running on Spark: spark.md
   - Handling errors: errors.md
   - API reference:

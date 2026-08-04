@@ -5,11 +5,10 @@ O(n^2) - each of the n-1 candidate thresholds is scored against all n samples. S
 by `exact`, which returns the same answer, or a marginally better one, in O(n log n).
 """
 
-import multiprocessing as mp
-from collections.abc import Iterator, Sequence
-from functools import partial
+from collections.abc import Sequence
 
-from thresher.backends import Backend, LocalBackend
+from thresher.backends import Backend, LocalBackend, MultiprocessingBackend
+from thresher.backends.mp_backend import resolve_worker_count
 from thresher.exceptions import InsufficientDataError
 from thresher.utils import pairwise, print_progress_bar
 
@@ -20,45 +19,18 @@ from thresher.utils import pairwise, print_progress_bar
 known_params = frozenset({"n_jobs"})
 
 
-def process_batch(
-    scores: Sequence[float], actual_classes: Sequence[int], data_point: float
-) -> tuple[float, float]:
-    """Score one candidate threshold against the whole dataset.
-
-    Defined at module level rather than as a closure because it is the function handed to
-    `multiprocessing.Pool.map`, and workers have to be able to pickle it.
-
-    Args:
-        scores: the values being split.
-        actual_classes: the matching ground-truth classes, as -1 and 1.
-        data_point: the candidate threshold to evaluate.
-
-    Returns:
-        A `(threshold, accuracy)` pair, where accuracy is the fraction of samples the
-        threshold classifies correctly. The threshold is passed back out so the caller can
-        identify results arriving from workers out of order.
-    """
-    count_correct, count_incorrect = 0, 0
-
-    for score, actual in zip(scores, actual_classes, strict=False):
-        predicted = 1 if score > data_point else -1
-        if predicted == actual:
-            count_correct += 1
-        else:
-            count_incorrect += 1
-
-    accuracy = count_correct / (count_correct + count_incorrect)
-
-    return data_point, accuracy
-
-
 def run_parallel(scores: Sequence[float], actual_classes: Sequence[int], verbose: bool, n_jobs: int) -> float:
     """Run the linear search across several processes.
 
-    Selected by `run_computations` when `allow_parallel` is set and `n_jobs != 1`. Note
-    that this evaluates the scores themselves as thresholds, whereas the single-process
-    `run` evaluates the midpoints between adjacent scores, so the two can return slightly
-    different - equally valid - answers.
+    Selected by `run_computations` when `allow_parallel` is set and `n_jobs != 1`.
+
+    Since 0.7.0 this is the ordinary search running on the `mp` backend, rather than a
+    second implementation of it. Two things follow. The answer no longer depends on
+    whether the search was parallelised: this used to evaluate the raw scores as
+    thresholds where the sequential path evaluates the midpoints between them, so the two
+    returned different - though equally valid - answers for the same data. And the
+    `__main__` guard that separate processes need is now enforced with an explanation
+    instead of hanging.
 
     Args:
         scores: the values being split.
@@ -67,41 +39,22 @@ def run_parallel(scores: Sequence[float], actual_classes: Sequence[int], verbose
         n_jobs: number of worker processes, or -1 for every available processor bar one.
 
     Returns:
-        The threshold with the highest accuracy.
+        The threshold with the highest accuracy - the same one the sequential path finds.
+
+    Raises:
+        ConfigurationError: if `n_jobs` is 0 or below -1. It is a `ValueError`.
+        ParallelBootstrapError: if the workers could not start, which usually means a
+            missing `__main__` guard. It is a `RuntimeError`.
     """
-    batch_size = len(scores)
-    number_of_processors = mp.cpu_count()
-
-    if (n_jobs < -1) or (n_jobs > number_of_processors):
-        print(
-            "Improper value for n_jobs. It must be either -1, or at most, the number of available processors"
-        )
-
-    # Resolve n_jobs=-1 to a real process count first, and derive the chunk size from
-    # that. Dividing the batch by n_jobs directly makes the chunk size negative when
-    # n_jobs is -1, which makes pool.map return Nones.
-    number_of_processes = max(1, number_of_processors - 1 if n_jobs == -1 else n_jobs)
-    chunk_size = max(1, batch_size // number_of_processes)
+    backend = MultiprocessingBackend(num_workers=n_jobs)
 
     if verbose:
         print(
-            f"Doing linear search with {batch_size} iterations, "
-            f"running in parallel over {number_of_processes} processes."
+            f"Doing linear search with {len(scores)} scores, "
+            f"running in parallel over {resolve_worker_count(n_jobs)} processes."
         )
 
-    def iterate_through_scores() -> Iterator[float]:
-        """Feed the scores to the pool one at a time, without copying the sequence.
-
-        Yields:
-            Each score in turn, as a candidate threshold for a worker to evaluate.
-        """
-        yield from scores
-
-    mp_func = partial(process_batch, scores, actual_classes)
-    with mp.Pool(processes=number_of_processes) as pool:
-        results = pool.map(func=mp_func, iterable=iterate_through_scores(), chunksize=chunk_size)
-
-    return next(i[0] for i in sorted(results, key=lambda x: x[1], reverse=True))
+    return run(scores, actual_classes, verbose, progress_bar=False, backend=backend)
 
 
 def run(

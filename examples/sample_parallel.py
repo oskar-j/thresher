@@ -1,27 +1,59 @@
-"""Linear search across several processes.
+"""Counting across several processes, with the `mp` backend.
 
-The `__main__` guard is required, not stylistic: this example asks for multiprocessing,
+The `__main__` guard is required, not stylistic. This example asks for worker processes,
 and on platforms whose start method is 'spawn' (macOS and Windows) each worker re-imports
-this file. Without the guard every worker would re-run the example and spawn its own
-workers, which hangs the machine rather than failing.
+this file. Without the guard every worker would re-run the example and start workers of
+its own. Before 0.7.0 that hung the machine; it now raises `ParallelBootstrapError` and
+says what to do - but the guard is still the thing to do.
+
+Two spellings of the same request are shown. `backend='mp'` is the general one and works
+for `exact` and `grid` as well; linear search's `n_jobs` predates it, means the same
+thing, and since 0.7.0 runs on the same backend.
 """
 
+import random
+
 import thresher
+from thresher.backends import MultiprocessingBackend
+
+
+def sample_data(size: int = 40_000) -> tuple[list[float], list[int]]:
+    """Build enough data to be worth dividing between processes.
+
+    Below a couple of thousand rows the backend counts in this process instead: handing
+    work to another one would cost more than the counting saves.
+
+    Args:
+        size: how many samples to generate.
+
+    Returns:
+        A `(scores, actual_classes)` pair, separable at around 0.4.
+    """
+    rng = random.Random(7)
+    scores = [rng.random() for _ in range(size)]
+    return scores, [1 if score > 0.4 else -1 for score in scores]
 
 
 def main() -> None:
-    # 'ls' is named explicitly because n_jobs belongs to linear search: it is the one
-    # algorithm with a multiprocessing path. Left to the default this example would have
-    # run the exact sweep in one process, quietly demonstrating nothing.
-    t = thresher.Thresher(algorithm="ls", verbose=True, algorithm_params={"n_jobs": 3})
+    scores, actual_classes = sample_data()
 
-    print("Currently supported algorithms:")
-    print(t.get_supported_algorithms())
+    # The general form: any of exact, ls and grid can use it.
+    parallel = thresher.Thresher(backend="mp", verbose=True)
+    print(f"Exact sweep on the mp backend: {parallel.optimize_threshold(scores, actual_classes)}")
 
-    case_small_scores = [0.1, 0.15, 0.2, 0.22, 0.27, 0.29, 0.3, 0.4, 0.7]
-    case_small_labels = [-1, -1, -1, -1, -1, -1, -1, 1, 1]
+    # The same thing with the process count chosen explicitly. -1 would mean every
+    # processor bar one.
+    configured = thresher.Thresher(backend=MultiprocessingBackend(num_workers=2))
+    print(f"...over two workers:           {configured.optimize_threshold(scores, actual_classes)}")
 
-    print(f"Optimization result: {t.optimize_threshold(case_small_scores, case_small_labels)}")
+    # And in this process, for comparison. A backend changes where the counting happens,
+    # never the answer, so these three agree exactly.
+    local = thresher.Thresher()
+    print(f"...and in this process:        {local.optimize_threshold(scores, actual_classes)}")
+
+    # Linear search's older spelling of the same request. Kept smaller: ls is O(n^2).
+    legacy = thresher.Thresher(algorithm="ls", algorithm_params={"n_jobs": 3})
+    print(f"Linear search with n_jobs=3:   {legacy.optimize_threshold(scores[:3000], actual_classes[:3000])}")
 
     print("Done")
 
