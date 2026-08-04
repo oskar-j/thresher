@@ -21,8 +21,8 @@ under test, so 100% means "found a cut-off as good as the best one that exists".
 | `exact` | **100.00%** | **100.00%** | **100.00%** | **1 ms** | **O(n log n)** | **O(d)** |
 | `hist` | 99.99% | 99.99% | 99.98% | 1 ms | O(n + k) | **O(k)** |
 | `ls` | 100.00% | 100.00% | 100.00% | 266 ms | O(n²) | O(n) |
-| `grid` | 99.82% | 99.98% | 100.00% | 18 ms | O(c·n) | O(c) |
-| `sgrid` | 99.57% | 97.84% | 99.70% | 1 ms | O(c·r·n) | O(n) |
+| `grid` | 99.83% | 99.99% | 99.92% | 11 ms | O(c·n) | O(c) |
+| `sgrid` | 99.57% | 97.81% | 99.62% | 1 ms | O(c·r·n) | O(r·n) |
 | `gen` | 99.62% | 98.23% | 88.64% | 117 ms | O(e·r·n) | O(r·n) |
 | `sgd` | 99.54% | 97.01% | 88.37% | 12 ms | O(i·r·n) | O(r·n) |
 
@@ -135,13 +135,17 @@ multiprocessing option.
 
 ## Grid search
 
-`grid` — evaluates every point on a fixed grid over `[0, 1]`. Cost depends on the grid
-resolution rather than the input size, and it is the only algorithm whose memory does not
-grow with the input.
+`grid` — evaluates every point on an evenly spaced grid across the data. Cost depends on
+the grid resolution rather than the input size, and its memory does not grow with the input.
+
+Since `0.6.4` the grid spans `[min(scores), max(scores)]`, plus one point below the minimum
+so "classify everything as positive" remains expressible. It previously spanned `[0, 1]`
+whatever the scores held, so any non-probability score — a logit, a margin — put every
+candidate outside the data and returned an edge at chance accuracy.
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `no_of_decimal_places` | 2 | grid resolution — `10**places + 1` candidates |
+| `no_of_decimal_places` | 2 | grid resolution — `10**places + 1` candidates, spread across the range the data occupies |
 
 ## Stochastic grid search
 
@@ -180,6 +184,7 @@ rare, because then a small subsample says little about where the boundary lies.
 | `stop_thresh` | 0.001 | improvement below which a step counts as making no progress |
 | `stop_patience` | 3 | how many such steps in a row end the walk |
 | `alpha` | 0.01 | how quickly the step size decays |
+| `step_ratio` | 0.05 | the first step, as a fraction of the score range |
 | `stoch_ratio` | 0.05 | fraction of the data each step reads |
 
 Raising `stoch_ratio` is the lever against the imbalance weakness. On 2,000 rows with 5%

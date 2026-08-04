@@ -6,6 +6,7 @@ rather than by the oracle, small inputs, and cleanly separable data.
 """
 
 import math
+import random
 from collections.abc import Callable
 
 import pytest
@@ -176,3 +177,146 @@ def test_a_larger_sgd_sample_reads_more_of_the_data(monkeypatch: pytest.MonkeyPa
 
     assert seen, "sgd never sampled at all"
     assert set(seen) == {0.42}, f"expected every sample to use 0.42, saw {sorted(set(seen))}"
+
+
+def accuracy_of(threshold: float, scores: list[float], actual_classes: list[int]) -> float:
+    """Fraction of samples the threshold classifies correctly."""
+    return sum(
+        1
+        for score, actual in zip(scores, actual_classes, strict=True)
+        if (1 if score > threshold else -1) == actual
+    ) / len(scores)
+
+
+class TestScoresOutsideTheUnitInterval:
+    """Scores need not be probabilities, fixed in 0.6.4 (#25).
+
+    `grid` and `sgrid` laid their candidates over a hardcoded `[0, 1]`. Given logits,
+    margins or any other scale, every candidate fell outside the data, so the answer was
+    whichever edge scored better - chance accuracy, returned without a warning.
+    """
+
+    NEGATIVE_RANGE: Dataset = ([-5.0, -4.0, -3.0, -2.0] * 25, [-1, -1, 1, 1] * 25)
+
+    @pytest.mark.parametrize("algorithm_name", ALL_ALGORITHMS)
+    def test_every_algorithm_separates_data_far_from_the_unit_interval(self, algorithm_name: str) -> None:
+        scores, actual_classes = self.NEGATIVE_RANGE
+
+        result = thresher.Thresher(algorithm=algorithm_name).optimize_threshold(scores, actual_classes)
+
+        # The data is cleanly separable, so anything short of 1.0 means the solver never
+        # looked where the boundary is. grid/sgrid used to score 0.5 here.
+        assert accuracy_of(result, scores, actual_classes) == 1.0
+
+    @pytest.mark.parametrize("algorithm_name", ["grid", "sgrid"])
+    @pytest.mark.parametrize("scale", [1e-4, 1000.0])
+    def test_the_grid_follows_the_scale_of_the_data(self, algorithm_name: str, scale: float) -> None:
+        scores = [value * scale for value in (0.1, 0.2, 0.8, 0.9)] * 25
+        actual_classes = [-1, -1, 1, 1] * 25
+
+        result = thresher.Thresher(algorithm=algorithm_name).optimize_threshold(scores, actual_classes)
+
+        assert accuracy_of(result, scores, actual_classes) == 1.0
+
+    @pytest.mark.parametrize("algorithm_name", ["grid", "sgrid"])
+    def test_the_everything_positive_split_is_still_reachable(self, algorithm_name: str) -> None:
+        """A threshold below every score is the only way to express it.
+
+        The old `[0, 1]` grid reached it by accident for data sitting above 0; a grid
+        spanning the data has to carry the candidate deliberately.
+        """
+        scores, actual_classes = [0.1, 0.2, 0.3], [1, 1, -1]
+
+        result = thresher.Thresher(algorithm=algorithm_name).optimize_threshold(scores, actual_classes)
+
+        assert result < min(scores)
+        assert accuracy_of(result, scores, actual_classes) == pytest.approx(2 / 3)
+
+    @pytest.mark.parametrize("algorithm_name", ["grid", "sgrid"])
+    def test_identical_scores_do_not_break_the_grid(self, algorithm_name: str) -> None:
+        # min == max leaves no range to divide into candidates.
+        result = thresher.Thresher(algorithm=algorithm_name).optimize_threshold(
+            [0.5] * 6, [-1, -1, -1, 1, 1, 1]
+        )
+
+        assert result <= 0.5
+
+    def test_a_tie_keeps_the_threshold_inside_the_data(self, separable: DatasetFactory) -> None:
+        # The below-minimum candidate is evaluated last, so it wins only on a strict
+        # improvement - the rule `exact` follows.
+        scores, actual_classes = separable(400, seed=5)
+
+        result = thresher.Thresher(algorithm="grid").optimize_threshold(scores, actual_classes)
+
+        assert min(scores) <= result <= max(scores)
+
+
+class TestSgdStepScalesWithTheData:
+    """The walk's reach follows the score range, fixed in 0.6.4 (#26).
+
+    The first step was a constant 0.05 and only ever decays, so the walk's total travel
+    was bounded at roughly 4.3 score units however far away the boundary was. On data
+    spanning thousands it stopped short of the boundary every single run - a deterministic
+    starvation, distinct from the sampling noise this solver is already known for.
+    """
+
+    @staticmethod
+    def imbalanced(scale: float, seed: int = 7) -> Dataset:
+        """Separable data at a given scale, with the boundary far above the mean."""
+        rng = random.Random(seed)
+        scores = [rng.uniform(0, 0.9) * scale for _ in range(900)]
+        scores += [rng.uniform(0.95, 1.0) * scale for _ in range(100)]
+        return scores, [-1] * 900 + [1] * 100
+
+    @pytest.mark.parametrize("trial", range(4))
+    def test_the_answer_scales_exactly_with_the_data(self, trial: int) -> None:
+        """Multiplying every score by 1000 must multiply the answer by 1000, and no more.
+
+        Seeding the global RNG makes both runs draw the same subsamples, so any remaining
+        difference is the step size failing to follow the data rather than sampling noise.
+        Before the fix the larger scale returned a wholly different, far worse threshold.
+        """
+        random.seed(100 + trial)
+        small = thresher.Thresher(algorithm="sgd").optimize_threshold(*self.imbalanced(1.0))
+        random.seed(100 + trial)
+        large = thresher.Thresher(algorithm="sgd").optimize_threshold(*self.imbalanced(1000.0))
+
+        assert large == pytest.approx(small * 1000.0)
+
+    def test_a_distant_optimum_is_reachable_at_a_large_scale(self) -> None:
+        scores, actual_classes = self.imbalanced(1000.0)
+
+        results = [
+            thresher.Thresher(algorithm="sgd").optimize_threshold(scores, actual_classes) for _ in range(9)
+        ]
+        accuracies = sorted(accuracy_of(result, scores, actual_classes) for result in results)
+
+        # The median rather than the worst case: this solver's sampling weakness on a rare
+        # class is documented and unrelated, and shows at every scale. What is being pinned
+        # is that the walk arrives at all - it used to score ~0.61 here on every run.
+        assert accuracies[len(accuracies) // 2] > 0.95
+
+    def test_step_ratio_is_configurable(self) -> None:
+        scores, actual_classes = self.imbalanced(1000.0)
+
+        result = thresher.Thresher(algorithm="sgd", algorithm_params={"step_ratio": 0.2}).optimize_threshold(
+            scores, actual_classes
+        )
+
+        assert min(scores) <= result <= max(scores)
+
+    def test_a_tiny_step_ratio_starves_the_walk(self) -> None:
+        """The knob has to reach the walk, not be accepted and ignored.
+
+        A step this small cannot cross the gap between the mean and the boundary within
+        the iteration budget, so the result stays near where it started - the old
+        behaviour, now reachable only by asking for it.
+        """
+        scores, actual_classes = self.imbalanced(1000.0)
+        starting_point = sum(scores) / len(scores)
+
+        result = thresher.Thresher(algorithm="sgd", algorithm_params={"step_ratio": 1e-9}).optimize_threshold(
+            scores, actual_classes
+        )
+
+        assert abs(result - starting_point) < abs(max(scores) - starting_point) / 2

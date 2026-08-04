@@ -20,10 +20,13 @@ stop_thresh_default = 0.001
 stop_patience_default = 3
 alpha_default = 0.01
 stoch_ratio_default = 0.05
+step_ratio_default = 0.05
 
 #: Every `algorithm_params` key this solver reads. Anything else is a typo, and is
 #: reported as one - see `dispatch.validate_algorithm_params`.
-known_params = frozenset({"num_of_iters", "stop_thresh", "stop_patience", "alpha", "stoch_ratio"})
+known_params = frozenset(
+    {"num_of_iters", "stop_thresh", "stop_patience", "alpha", "stoch_ratio", "step_ratio"}
+)
 
 EvalFunc = Callable[[float, float], tuple[float, float]]
 
@@ -167,10 +170,13 @@ def run(
             `num_of_iters` (200) caps the number of steps, `stop_thresh` (0.001) is the
             improvement below which a step counts as making no progress,
             `stop_patience` (3) is how many such steps in a row end the walk,
-            `alpha` (0.01) damps the step size on each iteration, and `stoch_ratio`
-            (0.05) is the fraction of the data each step reads. Raising the last is the
-            lever against this algorithm's weak spot: when one class is rare, a small
-            subsample carries little information about where the boundary lies.
+            `alpha` (0.01) damps the step size on each iteration, `step_ratio` (0.05)
+            sets the first step as a fraction of the score range - so the walk's reach
+            scales with the data rather than assuming it spans about 1 - and
+            `stoch_ratio` (0.05) is the fraction of the data each step reads. Raising
+            the last is the lever against this algorithm's weak spot: when one class is
+            rare, a small subsample carries little information about where the boundary
+            lies.
 
     Returns:
         The best threshold the walk visited, always within `[min(scores), max(scores)]`.
@@ -205,7 +211,15 @@ def run(
     if verbose:
         print(f"Starting point set to: {starting_point}")
 
-    starting_gradient = 0.05
+    lower_bound, upper_bound = min(scores), max(scores)
+
+    # A fraction of the range rather than an absolute distance. The step only decays, so
+    # a constant 0.05 bounded the walk's total travel at about 4.3 score units however
+    # far the optimum actually was: on data spanning thousands it stopped short of the
+    # boundary every run, deterministically. Probability-shaped scores span roughly 1, so
+    # the default still starts at ~0.05 for them and nothing changes there.
+    step_ratio: float = get_or_default(alg_options, "step_ratio", step_ratio_default)
+    starting_gradient = step_ratio * (upper_bound - lower_bound)
 
     num_of_iters: int = get_or_default(alg_options, "num_of_iters", num_of_iters_default)
     stop_thresh: float = get_or_default(alg_options, "stop_thresh", stop_thresh_default)
@@ -220,7 +234,7 @@ def run(
         num_of_iters=num_of_iters,
         stop_thresh=stop_thresh,
         alpha=alpha,
-        lower_bound=min(scores),
-        upper_bound=max(scores),
+        lower_bound=lower_bound,
+        upper_bound=upper_bound,
         stop_patience=stop_patience,
     )
