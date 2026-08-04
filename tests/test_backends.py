@@ -9,13 +9,22 @@ The property that matters throughout: a backend changes where the counting happe
 the answer.
 """
 
+import multiprocessing
 import random
+import subprocess
+import sys
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
 import thresher
-from thresher.backends import AVAILABLE_BACKENDS, LocalBackend, get_backend
+from thresher.backends import (
+    AVAILABLE_BACKENDS,
+    LocalBackend,
+    MultiprocessingBackend,
+    get_backend,
+)
 from thresher.backends.base import (
     count_chunk,
     merge_counts,
@@ -23,6 +32,7 @@ from thresher.backends.base import (
     plan_shards,
     tally_chunk,
 )
+from thresher.backends.mp_backend import resolve_worker_count
 
 Dataset = tuple[list[float], list[int]]
 DatasetFactory = Callable[..., Dataset]
@@ -221,3 +231,206 @@ class TestRay:
         ).optimize_threshold(scores, actual_classes)
 
         assert result == expected
+
+
+class TestMultiprocessing:
+    """The `mp` backend, added in 0.7.0.
+
+    Unlike Ray this needs nothing installed, so these run everywhere - including the
+    macOS x86_64 machines Ray has no wheel for, which is where the Ray class above skips.
+    A small `min_rows_per_shard` is used throughout: the default deliberately keeps small
+    inputs in-process, which would leave the sharding untested.
+    """
+
+    @pytest.mark.parametrize("algorithm_name", DISTRIBUTABLE)
+    def test_mp_gives_the_same_answer_as_local(self, separable: DatasetFactory, algorithm_name: str) -> None:
+        """The property the whole design rests on: identical results, not merely close."""
+        scores, actual_classes = separable(4000, seed=2)
+
+        local = thresher.Thresher(algorithm=algorithm_name, backend="local").optimize_threshold(
+            scores, actual_classes
+        )
+        parallel = thresher.Thresher(
+            algorithm=algorithm_name, backend=MultiprocessingBackend(num_workers=3, min_rows_per_shard=1)
+        ).optimize_threshold(scores, actual_classes)
+
+        assert parallel == local
+
+    @pytest.mark.parametrize("algorithm_name", DISTRIBUTABLE)
+    def test_same_answer_on_awkward_data(self, algorithm_name: str) -> None:
+        """Duplicates and ties must land identically however the data was cut up."""
+        rng = random.Random(3)
+        scores = [round(rng.random(), 2) for _ in range(2000)]
+        actual_classes = [rng.choice([-1, 1]) for _ in range(2000)]
+
+        local = thresher.Thresher(algorithm=algorithm_name, backend="local").optimize_threshold(
+            scores, actual_classes
+        )
+        parallel = thresher.Thresher(
+            algorithm=algorithm_name, backend=MultiprocessingBackend(num_workers=3, min_rows_per_shard=1)
+        ).optimize_threshold(scores, actual_classes)
+
+        assert parallel == local
+
+    @pytest.mark.parametrize("workers", [1, 2, 3, 7])
+    def test_the_worker_count_cannot_change_the_answer(self, separable: DatasetFactory, workers: int) -> None:
+        scores, actual_classes = separable(2000, seed=4)
+        expected = thresher.Thresher(algorithm="exact").optimize_threshold(scores, actual_classes)
+
+        result = thresher.Thresher(
+            algorithm="exact",
+            backend=MultiprocessingBackend(num_workers=workers, min_rows_per_shard=1),
+        ).optimize_threshold(scores, actual_classes)
+
+        assert result == expected
+
+    def test_mp_handles_the_below_minimum_edge_split(self) -> None:
+        scores, actual_classes = [0.1, 0.2, 0.3], [1, 1, -1]
+
+        result = thresher.Thresher(algorithm="exact", backend="mp").optimize_threshold(scores, actual_classes)
+
+        assert result < min(scores)
+
+    def test_stochastic_algorithms_still_run_under_mp(self) -> None:
+        """They are not distributed, but asking for mp must not break them."""
+        scores, actual_classes = [0.1, 0.15, 0.2, 0.4, 0.7, 0.8], [-1, -1, -1, 1, 1, 1]
+
+        for algorithm_name in ("sgrid", "gen", "sgd"):
+            result = thresher.Thresher(algorithm=algorithm_name, backend="mp").optimize_threshold(
+                scores, actual_classes
+            )
+            assert isinstance(result, float)
+
+    def test_small_inputs_stay_in_this_process(self) -> None:
+        """Below `min_rows_per_shard` a fork costs more than the counting it saves.
+
+        Asserted through the shard plan rather than by timing, which would be flaky.
+        """
+        backend = MultiprocessingBackend(num_workers=4)
+
+        assert len(backend._shards(100)) == 1
+        assert len(backend._shards(1_000_000)) > 1
+
+    def test_it_is_registered_under_its_name(self) -> None:
+        assert "mp" in AVAILABLE_BACKENDS
+        assert get_backend("mp").name == "mp"
+
+
+class TestWorkerCounts:
+    """`n_jobs` and `num_workers` name the same thing and resolve through one function."""
+
+    def test_none_means_one_per_processor(self) -> None:
+        assert resolve_worker_count(None) == multiprocessing.cpu_count()
+
+    def test_minus_one_leaves_a_processor_free(self) -> None:
+        assert resolve_worker_count(-1) == max(1, multiprocessing.cpu_count() - 1)
+
+    def test_over_asking_is_clamped_rather_than_refused(self) -> None:
+        """How many cores exist is a property of the machine, not a mistake in the code.
+
+        `n_jobs=9999` used to open 9,999 processes.
+        """
+        assert resolve_worker_count(9999) == multiprocessing.cpu_count()
+
+    @pytest.mark.parametrize("value", [0, -2, -100])
+    def test_meaningless_counts_are_refused(self, value: int) -> None:
+        """These used to print a message and carry on with one process regardless."""
+        with pytest.raises(ValueError, match="num_workers"):
+            resolve_worker_count(value)
+
+    @pytest.mark.parametrize("value", [0, -2])
+    def test_a_bad_n_jobs_is_refused_through_the_public_api(self, value: int) -> None:
+        with pytest.raises(ValueError):
+            thresher.Thresher(algorithm="ls", algorithm_params={"n_jobs": value}).optimize_threshold(
+                [0.1, 0.4, 0.6, 0.9], [-1, -1, 1, 1]
+            )
+
+    def test_n_jobs_agrees_with_the_sequential_search(self, separable: DatasetFactory) -> None:
+        """Parallelising must not change the answer.
+
+        Before 0.7.0 the parallel path scored the raw scores while the sequential path
+        scored the midpoints between them, so the two disagreed on the same data.
+        """
+        scores, actual_classes = separable(600, seed=6)
+
+        sequential = thresher.Thresher(algorithm="ls").optimize_threshold(scores, actual_classes)
+        parallel = thresher.Thresher(algorithm="ls", algorithm_params={"n_jobs": 2}).optimize_threshold(
+            scores, actual_classes
+        )
+
+        assert parallel == sequential
+
+    def test_an_explicit_backend_beats_n_jobs(self, separable: DatasetFactory) -> None:
+        """Documented precedence: the two would otherwise contend for the same cores."""
+        scores, actual_classes = separable(600, seed=7)
+
+        expected = thresher.Thresher(algorithm="ls").optimize_threshold(scores, actual_classes)
+        result = thresher.Thresher(
+            algorithm="ls",
+            backend=MultiprocessingBackend(num_workers=2, min_rows_per_shard=1),
+            algorithm_params={"n_jobs": 4},
+        ).optimize_threshold(scores, actual_classes)
+
+        assert result == expected
+
+
+class TestMissingMainGuard:
+    """A script that parallelises at module level, fixed in 0.7.0 (#22).
+
+    On a start method that re-imports `__main__` - spawn on macOS and Windows - the
+    workers re-run the script and start workers of their own. `multiprocessing.Pool` then
+    waited on children that would never report, so the process hung with no error at all;
+    the run had to be killed. It now fails, quickly, saying what to do.
+
+    Necessarily a subprocess test: the failure only exists for a script whose module-level
+    code starts a pool, which is not something pytest's own `__main__` can reproduce.
+    """
+
+    SCRIPT = """
+import thresher
+scores = [0.1, 0.4, 0.6, 0.9] * 2000
+labels = [-1, -1, 1, 1] * 2000
+t = thresher.Thresher(algorithm='ls', algorithm_params={'n_jobs': 3})
+print(t.optimize_threshold(scores, labels))
+"""
+
+    GUARDED_SCRIPT = """
+import thresher
+
+def main():
+    scores = [0.1, 0.4, 0.6, 0.9] * 2000
+    labels = [-1, -1, 1, 1] * 2000
+    t = thresher.Thresher(algorithm='ls', algorithm_params={'n_jobs': 3})
+    print(t.optimize_threshold(scores, labels))
+
+if __name__ == "__main__":
+    main()
+"""
+
+    def run_script(self, tmp_path: Path, source: str) -> "subprocess.CompletedProcess[str]":
+        script = tmp_path / "run_me.py"
+        script.write_text(source)
+        # Generous but finite: the point is that this used to never return at all.
+        return subprocess.run(
+            [sys.executable, str(script)], capture_output=True, text=True, timeout=120, check=False
+        )
+
+    @pytest.mark.skipif(
+        multiprocessing.get_start_method() == "fork",
+        reason="fork does not re-import __main__, so there is nothing to guard against",
+    )
+    def test_it_fails_with_an_explanation_rather_than_hanging(self, tmp_path: Path) -> None:
+        completed = self.run_script(tmp_path, self.SCRIPT)
+
+        assert completed.returncode != 0, "the unguarded script should not have succeeded"
+        assert "ParallelBootstrapError" in completed.stderr
+        # The message has to carry the fix, not just name the failure.
+        assert '__name__ == "__main__"' in completed.stderr
+
+    def test_the_guarded_form_works(self, tmp_path: Path) -> None:
+        completed = self.run_script(tmp_path, self.GUARDED_SCRIPT)
+
+        assert completed.returncode == 0, completed.stderr[-2000:]
+        # Any threshold from 0.4 up to but excluding 0.6 classifies this data perfectly;
+        # which one comes back is the tie-breaking, not the point of this test.
+        assert 0.4 <= float(completed.stdout.strip()) < 0.6

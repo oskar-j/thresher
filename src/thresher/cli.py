@@ -210,8 +210,9 @@ def _list_algorithms(ctx: click.Context, _param: click.Parameter, value: bool) -
     type=click.Choice(AVAILABLE_BACKENDS),
     default="local",
     show_default=True,
-    help="Where the counting runs. 'ray' spreads it over a Ray cluster and needs "
-    "thresher-py[ray]; it changes the speed, never the answer.",
+    help="Where the counting runs. 'mp' spreads it over this machine's CPU cores and "
+    "needs nothing installed; 'ray' spreads it over a Ray cluster and needs "
+    "thresher-py[ray]. Either changes the speed, never the answer.",
 )
 @click.option("-v", "--verbose", is_flag=True, help="Report progress on stderr.")
 @click.option(
@@ -246,7 +247,7 @@ def main(
       thresher scores.csv --labels 0,1 -a grid
       thresher data.tsv --sep '\\t' --score-column pred --label-column actual
       cat scores.csv | thresher - -a ls -p n_jobs=4
-      thresher big.csv --backend ray
+      thresher big.csv --backend mp
     """
     source: Any = sys.stdin if input_file == "-" else Path(input_file)
 

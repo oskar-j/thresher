@@ -50,6 +50,17 @@ UNKNOWN_ALGORITHM_NAME = (
 
 UNKNOWN_BACKEND_NAME = "Unknown backend {name!r}. Available backends are: {available}."
 
+PARALLEL_BOOTSTRAP_FAILED = (
+    "The worker processes could not start, so no counting was done. This almost always "
+    "means the calling script builds its Thresher at module level: on start methods that "
+    "re-import __main__ - spawn on macOS and Windows - each worker re-runs the script and "
+    "starts its own workers. Put the call inside a function and guard it:\n\n"
+    '    if __name__ == "__main__":\n'
+    "        main()\n\n"
+    "See examples/sample_parallel.py. Nothing to change if you would rather not: "
+    "backend='local' is the default and needs no guard."
+)
+
 UNEXPECTED_LABELS = (
     'Found {unexpected} in "actual_classes", but only -1 and 1 are supported. '
     'If your data uses different labels, declare them with the "labels" option, '
@@ -219,6 +230,16 @@ class NotIterableError(ThresherError, AttributeError):
 
 class BackendDependencyError(ThresherError, ImportError):
     """A backend was selected whose optional dependency is not installed."""
+
+
+class ParallelBootstrapError(ThresherError, RuntimeError):
+    """Worker processes could not be started, so the work never ran.
+
+    Inherits `RuntimeError` because that is what `BrokenProcessPool` - the failure this
+    replaces - already was, so an `except RuntimeError` written around a parallel run keeps
+    working. Before 0.7.0 this situation had no exception at all: `multiprocessing.Pool`
+    waited on workers that would never report, and the process simply hung.
+    """
 
 
 class AlgorithmNotWiredError(ThresherError, NotImplementedError):

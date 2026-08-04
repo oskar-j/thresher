@@ -46,7 +46,7 @@ $ thresher scores.csv
 
 -   **Scales out**
 
-    An optional [Ray backend](backends.md) spreads the counting over a cluster, and
+    Optional [parallel backends](backends.md) spread the counting over your CPU cores or a cluster, and
     [Spark](spark.md) reads the data where it already lives — neither changes the answer.
 
 </div>

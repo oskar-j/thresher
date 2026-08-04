@@ -63,7 +63,8 @@ underneath — which of the seven search algorithms runs, and how hard it looks.
 - [Sample usage](#sample-usage)
 - [Handling errors](#handling-errors)
 - [Command line](#command-line)
-- [Running on Ray](#running-on-ray)
+- [Running in parallel](#running-in-parallel)
+  - [Running on Ray](#running-on-ray)
 - [Running on Spark](#running-on-spark)
 - [Performance tests](#performance-tests)
 - [Future work](#future-work)
@@ -216,7 +217,13 @@ This is the most basic, iterative approach. For every _threshold_ present in the
 
 List of parameters to customize:
 * `n_jobs` (default: 1) - set to `-1` for using all available processors except one; any value of `2` or more
-enables multiprocessing, while the default value of `1` disables multiprocessing
+enables multiprocessing, while the default value of `1` disables multiprocessing. Since
+`0.7.0` this is the [`mp` backend](#running-in-parallel) under another name, so a script
+using it needs an `if __name__ == "__main__":` guard — see the note there. Values that
+name no sensible process count (`0`, or below `-1`) are now refused instead of quietly
+falling back to one process, and asking for more processors than exist is clamped to what
+the machine has instead of opening that many. `Thresher(backend='mp')` is the clearer
+spelling and works for `exact` and `grid` too
 
 ### 2-dim Stochastic Gradient Descent
 
@@ -489,6 +496,8 @@ being exact, it has no accuracy to trade for speed.
 Examples:
 
 ```python
+# n_jobs starts worker processes, so this belongs inside a __main__ guard - see
+# "Running in parallel" below.
 t = thresher.Thresher(algorithm='ls', algorithm_params={'n_jobs': 3})
 ```
 
@@ -548,6 +557,7 @@ ThresherError
 ├── LabelMappingError         the `labels` option cannot map        (TypeError)
 ├── NotIterableError          scores or classes are not iterable    (AttributeError)
 ├── BackendDependencyError    an optional dependency is missing     (ImportError)
+├── ParallelBootstrapError    worker processes could not start      (RuntimeError)
 ├── AlgorithmNotWiredError    a bug in this package                 (NotImplementedError)
 └── ShardMergeError           a bug in this package                 (ValueError)
 ```
@@ -598,11 +608,53 @@ documents every flag. Errors are reported in command-line terms rather than as P
 tracebacks, and exit codes follow the usual convention: `2` for a usage mistake, `1` when
 the data itself cannot be optimized.
 
-## Running on Ray
+## Running in parallel
 
-Thresher runs in two modes. By default everything happens in your process, exactly as it
-always has. Pass `backend='ray'` and the counting is spread over a
-[Ray](https://github.com/ray-project/ray) cluster instead:
+Thresher runs in three modes. By default everything happens in your process, exactly as it
+always has. Pass `backend='mp'` and the counting is spread over this machine's CPU cores:
+
+```python
+from thresher import Thresher
+
+def main():
+    Thresher(backend="mp").optimize_threshold(scores, actual_classes)
+
+if __name__ == "__main__":   # required - see the note below
+    main()
+```
+
+or from the terminal, where no guard is needed:
+
+```
+thresher big.csv --backend mp
+```
+
+It needs nothing installed — `multiprocessing` is in the standard library — so unlike Ray
+it is available everywhere, including the Intel Macs Ray has no wheel for. Added in
+`0.7.0`.
+
+> [!IMPORTANT]
+> **A script that uses `mp` at module level must guard its entry point.** On macOS and
+> Windows each worker re-imports your script, so without an `if __name__ == "__main__":`
+> guard every worker starts workers of its own. Before `0.7.0` that hung the process with
+> no error at all; it now raises `ParallelBootstrapError` and tells you this. The default
+> `local` backend needs no guard, and neither does the `thresher` command.
+
+For finer control, pass a configured backend instead of a name:
+
+```python
+from thresher.backends import MultiprocessingBackend
+
+Thresher(backend=MultiprocessingBackend(num_workers=4)).optimize_threshold(scores, actual_classes)
+```
+
+`num_workers=-1` means every processor bar one. Asking for more workers than the machine
+has is clamped to what it has, rather than refused.
+
+### Running on Ray
+
+For data that lives on a cluster rather than a laptop, pass `backend='ray'` and the same
+counting is spread over a [Ray](https://github.com/ray-project/ray) cluster instead:
 
 ```
 pip install 'thresher-py[ray]'
@@ -624,16 +676,16 @@ If you have already called `ray.init(address=...)`, Thresher joins that cluster.
 have not, Ray starts a local one.
 
 **A backend changes where the work happens, never the answer.** The map and reduce steps
-are the same functions in both modes — the Ray backend ships them to workers rather than
-reimplementing them — and there are tests asserting the two backends return *identical*
-results, not merely close ones, including on data full of duplicates and ties.
+are the same functions in every mode — the `mp` and `ray` backends ship them to workers
+rather than reimplementing them — and there are tests asserting the backends return
+*identical* results, not merely close ones, including on data full of duplicates and ties.
 
 ### What gets distributed
 
 The work is a map-reduce: shard the data once, count on each shard, add the partial counts
 together.
 
-| Algorithm | On Ray | Why |
+| Algorithm | Parallel | Why |
 |---|---|---|
 | `exact` | **yes** | Needs only the class counts at each distinct score, so the per-row work shards cleanly and the driver is left with one pass over the distinct scores |
 | `ls` | **yes** | "Score these candidates, keep the best" — each shard tallies every candidate, and the tallies add up |
@@ -641,16 +693,20 @@ together.
 | `sgrid`, `gen` | no | Each evaluation reads its own random subsample. Sharding would change which samples are drawn, and so the result |
 | `sgd` | no | A sequential walk — each step depends on the one before it, so there is nothing to run in parallel |
 
-The last three still work under `backend='ray'`; they simply run in-process. Nothing
-silently changes its answer to become distributable.
+The last three still work under `backend='mp'` or `backend='ray'`; they simply run
+in-process. Nothing silently changes its answer to become distributable.
 
 ### When it is worth it
 
-Not for small data. Scheduling a shard costs far more than counting a few thousand rows,
-so the backend keeps shards at 5,000 rows or more and will happily use a single shard for
-a small input. Ray earns its keep when the data is large, when it already lives in a Ray
-cluster, or when you are calling Thresher from inside a Ray application and want it to use
-the resources you have.
+Not for small data. Handing work to another process costs far more than counting a few
+thousand rows, so both backends keep shards above a floor — 2,000 rows for `mp`, 5,000 for
+Ray, whose scheduling costs more — and simply count in this process when the data is
+smaller than that.
+
+Between the two: `mp` needs no setup and uses the cores you already have, which is what you
+want on one machine. Ray earns its keep when the data is large, when it already lives in a
+Ray cluster, or when you are calling Thresher from inside a Ray application and want it to
+use the resources you have.
 
 For finer control, pass a configured backend instead of a name:
 

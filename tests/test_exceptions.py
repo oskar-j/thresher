@@ -86,6 +86,14 @@ FAILURES: list[tuple[str, Callable[[], object], type[Exception], type[Exception]
         ValueError,
     ),
     (
+        "meaningless worker count",
+        lambda: thresher.Thresher(algorithm="ls", algorithm_params={"n_jobs": 0}).optimize_threshold(
+            [0.1, 0.9], [-1, 1]
+        ),
+        exc.ConfigurationError,
+        ValueError,
+    ),
+    (
         "not iterable",
         lambda: thresher.Thresher().optimize_threshold(7, [-1, 1]),  # type: ignore[arg-type]
         exc.NotIterableError,
@@ -237,6 +245,26 @@ class TestGrouping:
 
         assert not issubclass(exc.InvalidInputError, exc.ConfigurationError)
         assert not issubclass(exc.ConfigurationError, exc.InvalidInputError)
+
+
+class TestParallelBootstrap:
+    """The failure that replaced a hang, added in 0.7.0.
+
+    It cannot be triggered from inside pytest - the situation needs a script whose
+    module-level code starts a pool - so the subprocess test lives in test_backends.py.
+    What is checked here is the shape of the class, which that test cannot assert on.
+    """
+
+    def test_it_is_a_thresher_error_and_a_runtime_error(self) -> None:
+        error = exc.ParallelBootstrapError(exc.PARALLEL_BOOTSTRAP_FAILED)
+
+        assert isinstance(error, exc.ThresherError)
+        # BrokenProcessPool, which this replaces, is already a RuntimeError.
+        assert isinstance(error, RuntimeError)
+
+    def test_the_message_says_how_to_fix_it(self) -> None:
+        assert '__name__ == "__main__"' in exc.PARALLEL_BOOTSTRAP_FAILED
+        assert "backend='local'" in exc.PARALLEL_BOOTSTRAP_FAILED
 
 
 def test_the_message_constants_are_still_importable() -> None:
