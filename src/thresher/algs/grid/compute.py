@@ -20,6 +20,13 @@ no_of_decimal_places_default = 2
 stoch_ratio_default = 0.05
 reshuffle_default = False
 
+#: The `algorithm_params` keys each of the two algorithms sharing this file reads.
+#: `stoch_ratio` and `reshuffle` are consulted only on the stochastic path, so passing
+#: them to the exhaustive `grid` does nothing - which is a typo's failure mode, and is
+#: reported as one. See `dispatch.validate_algorithm_params`.
+known_params = frozenset({"no_of_decimal_places"})
+known_params_stoch = known_params | {"stoch_ratio", "reshuffle"}
+
 
 def _get_random_projection(
     scores: Sequence[float], actual_classes: Sequence[int], stoch_ratio: float

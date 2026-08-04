@@ -22,7 +22,7 @@ from thresher.algs.histogram import compute as hist_compute
 from thresher.algs.linear import compute as linear_compute
 from thresher.algs.sgd import compute as sgd_compute
 from thresher.backends import Backend, LocalBackend
-from thresher.exceptions import AlgorithmNotWiredError
+from thresher.exceptions import UNKNOWN_PARAMS, AlgorithmNotWiredError, ConfigurationError
 from thresher.utils import validate_actual_classes, validate_lengths
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,57 @@ STOCHASTIC_GRADIENT_DESCENT = algorithm.available_algorithms["sgd"]
 GENETIC_ALGORITHM = algorithm.available_algorithms["gen"]
 GRID_SEARCH_ALGORITHM = algorithm.available_algorithms["grid"]
 STOCHASTIC_GRID_SEARCH_ALGORITHM = algorithm.available_algorithms["sgrid"]
+
+#: Which `algorithm_params` keys each algorithm reads. Each solver declares its own set
+#: beside the defaults that define them, and this is the only module that sees them all -
+#: the same reason the dispatch chain below lives here.
+KNOWN_PARAMS: dict[str, frozenset[str]] = {
+    EXACT_ALGORITHM.id: exact_compute.known_params,
+    HISTOGRAM_ALGORITHM.id: hist_compute.known_params,
+    LINEAR_ALGORITHM.id: linear_compute.known_params,
+    STOCHASTIC_GRADIENT_DESCENT.id: sgd_compute.known_params,
+    GENETIC_ALGORITHM.id: gen_compute.known_params,
+    GRID_SEARCH_ALGORITHM.id: grid_compute.known_params,
+    STOCHASTIC_GRID_SEARCH_ALGORITHM.id: grid_compute.known_params_stoch,
+}
+
+
+def validate_algorithm_params(chosen_algorithm: algorithm.Algorithm, alg_options: Mapping[str, Any]) -> None:
+    """Reject `algorithm_params` keys the chosen algorithm does not read.
+
+    Every solver reads its parameters through `utils.get_or_default`, which falls back to
+    the default when a key is absent. A mistyped name is therefore absent, and the run
+    silently proceeds with the value the caller thought they had replaced. That is how
+    `optimized_start` stayed in the README for years after the code stopped reading it.
+
+    The algorithm is settled when a `Thresher` is built, so the set of valid keys is known
+    then too - which is why this is a configuration error rather than a data one.
+
+    Args:
+        chosen_algorithm: the algorithm whose parameters these are meant to be.
+        alg_options: the user's `algorithm_params` mapping.
+
+    Returns:
+        None. This is a guard - it either passes silently or raises.
+
+    Raises:
+        ConfigurationError: if any key is not one this algorithm reads. It is a
+            `ValueError`. The message names the offending keys and lists the accepted
+            ones, or says the algorithm takes none at all.
+    """
+    known = KNOWN_PARAMS.get(chosen_algorithm.id, frozenset())
+    unknown = set(alg_options) - known
+    if not unknown:
+        return
+
+    accepted = ", ".join(sorted(known)) if known else "none - it is exact, so there is nothing to tune"
+    raise ConfigurationError(
+        UNKNOWN_PARAMS.format(
+            unknown=", ".join(sorted(repr(name) for name in unknown)),
+            algorithm=chosen_algorithm.id,
+            accepted=accepted,
+        )
+    )
 
 
 def run_computations(
@@ -63,8 +114,9 @@ def run_computations(
         progress_bar: draw a progress bar on stdout, where the solver supports one.
         allow_parallel: permit multiprocessing. Only linear search acts on this, and only
             when `alg_options` also carries an `n_jobs` other than 1.
-        alg_options: the user's `algorithm_params`. Each solver reads the keys it knows
-            and silently ignores the rest.
+        alg_options: the user's `algorithm_params`. Each solver reads the keys it knows;
+            `validate_algorithm_params` has already rejected any it does not, at
+            construction time.
         backend: where the counting happens. `exact`, `ls` and `grid` accept it; the
             stochastic and sequential solvers do not, because distributing them would
             change their sampling and so their answers. They run in-process whatever is

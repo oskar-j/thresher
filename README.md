@@ -253,9 +253,8 @@ List of parameters to customize:
 * `number_of_iterations` (default: 10) - number of iterations per a generation
 * `sus_factor` (default: 2) - how many least-fit agents should be childless at the end of generation
 * `stoch_ratio` (default: 0.02) - percentage of data to evaluate fit of a single agent per iteration
-* `optimized_start` (default: True)
-* `mutation_chance` (default: 0.05)
-* `mutation_factor` (default: 0.10)
+* `mutation_chance` (default: 0.05) - probability that one agent per generation is nudged at random
+* `mutation_factor` (default: 0.10) - how far such a nudge can move that agent's threshold
 
 ### Grid search
 
@@ -463,15 +462,21 @@ Some of the above-mentioned algorithms allow to change their parameters.
 They should be provided in a dictionary, inside the `algorithm_params` parameter.
 If no such customs parameters are provided, default values apply.
 
+Parameters belong to a specific algorithm, so name the algorithm they are for. Since
+`0.6.3` a key the chosen algorithm does not read raises `ConfigurationError` when the
+`Thresher` is built - it used to be ignored in silence, leaving the default in place and
+the caller believing otherwise. The default algorithm, `exact`, accepts none at all:
+being exact, it has no accuracy to trade for speed.
+
 Examples:
 
 ```python
-t = thresher.Thresher(algorithm_params={'n_jobs': 3})
+t = thresher.Thresher(algorithm='ls', algorithm_params={'n_jobs': 3})
 ```
 
 ```python
-t = thresher.Thresher(algorithm_params={'no_of_decimal_places': 3,
-                                        'stoch_ratio': 0.10})
+t = thresher.Thresher(algorithm='sgrid', algorithm_params={'no_of_decimal_places': 3,
+                                                           'stoch_ratio': 0.10})
 ```
 
 ## Sample usage

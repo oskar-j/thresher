@@ -80,6 +80,12 @@ FAILURES: list[tuple[str, Callable[[], object], type[Exception], type[Exception]
         ValueError,
     ),
     (
+        "mistyped algorithm parameter",
+        lambda: thresher.Thresher(algorithm="sgd", algorithm_params={"stoch_ration": 0.5}),
+        exc.ConfigurationError,
+        ValueError,
+    ),
+    (
         "not iterable",
         lambda: thresher.Thresher().optimize_threshold(7, [-1, 1]),  # type: ignore[arg-type]
         exc.NotIterableError,

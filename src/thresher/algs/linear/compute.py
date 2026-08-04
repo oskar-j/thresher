@@ -13,6 +13,12 @@ from thresher.backends import Backend, LocalBackend
 from thresher.exceptions import InsufficientDataError
 from thresher.utils import pairwise, print_progress_bar
 
+#: The one `algorithm_params` key linear search reads. It is consulted by
+#: `run_computations` rather than here - it selects between `run` and `run_parallel`
+#: instead of being passed into either - but it belongs to this algorithm and is
+#: documented under it. See `dispatch.validate_algorithm_params`.
+known_params = frozenset({"n_jobs"})
+
 
 def process_batch(
     scores: Sequence[float], actual_classes: Sequence[int], data_point: float

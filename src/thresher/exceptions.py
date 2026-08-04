@@ -35,6 +35,14 @@ UNKNOWN_OPTIONS = (
     "A mistyped name used to be accepted in silence, leaving the default in place."
 )
 
+ALGORITHM_PARAMS_TYPE = 'The "algorithm_params" option must be a mapping of name to value, got {got}.'
+
+UNKNOWN_PARAMS = (
+    "Unknown algorithm_params key(s) for {algorithm}: {unknown}. It reads: {accepted}. "
+    "A mistyped name used to be ignored in silence, so the run continued with the "
+    "default the caller believed they had changed."
+)
+
 UNKNOWN_ALGORITHM_NAME = (
     "Unknown algorithm {name!r}. Available algorithms are: {available}. "
     "Run get_supported_algorithms() to list them at runtime."

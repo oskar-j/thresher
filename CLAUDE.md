@@ -144,7 +144,9 @@ Internally everything is `-1` / `1`. `Thresher.optimize_threshold` runs `utils.m
 
 ### Algorithm parameters
 
-User-supplied `algorithm_params` reach solvers as an `alg_options` mapping whose values are `Any`. Every solver reads it with `utils.get_or_default(alg_options, 'key', key_default)`, where `key_default` is a module-level constant at the top of that `compute.py`. Unknown keys are silently ignored — there is no validation, so a typo'd param name fails quietly with the default value.
+User-supplied `algorithm_params` reach solvers as an `alg_options` mapping whose values are `Any`. Every solver reads it with `utils.get_or_default(alg_options, 'key', key_default)`, where `key_default` is a module-level constant at the top of that `compute.py`.
+
+Since 0.6.3 each `compute.py` also declares a `known_params` frozenset beside those constants, and `dispatch.KNOWN_PARAMS` collects them — dispatch being the only module that imports every solver. `Thresher.__init__` and `set_algorithm` run `dispatch.validate_algorithm_params`, so an unknown key is a `ConfigurationError` at construction rather than a default silently left in place. **Adding a parameter means adding it to three places**: the `*_default` constant, that solver's `known_params`, and the README — `tests/test_internals.py::TestDocumentedParameters` compares the last two in both directions and fails if either drifts. Note `grid` and `sgrid` share `compute.py` but not their parameter sets (`stoch_ratio` and `reshuffle` are stochastic-only), which is why that file declares two.
 
 ### Shared solver helpers (`algs/common/`)
 
@@ -219,7 +221,7 @@ All solvers expose `run(scores, actual_classes, verbose, progress_bar, alg_optio
 Four edits, all required:
 
 1. Add an entry to `available_algorithms` in `algorithm.py` (set `data_vol_thresh=None` unless the oracle should route on it).
-2. Create `src/thresher/algs/<name>/compute.py` with a `run(...)` matching the convention above, plus `__init__.py`. Annotate it — `mypy --strict` covers `src/` and will reject untyped defs.
+2. Create `src/thresher/algs/<name>/compute.py` with a `run(...)` matching the convention above, plus `__init__.py`. Annotate it — `mypy --strict` covers `src/` and will reject untyped defs. Declare a `known_params` frozenset there even if it is empty, and add it to `dispatch.KNOWN_PARAMS`; a test asserts every registered algorithm has an entry.
 3. In `oracle.py`: import the compute module, add a module-level constant, and add a branch to `run_computations()`.
 4. Nothing in `tests/` hardcodes the algorithm count — `test_supported_algorithms` compares against `available_algorithms` itself — but `tests/test_regressions.py::ALL_ALGORITHMS` and the parametrised lists in `tests/test_optimization.py` should gain the new id so it is actually exercised.
 

@@ -293,3 +293,32 @@ class TestEdges:
         from thresher.spark import SparkThresher
 
         assert SparkThresher(alias).algorithm.id in DISTRIBUTABLE
+
+
+class TestParameterValidation:
+    """The Spark interface takes `algorithm_params` too, and validates them the same way.
+
+    A mistyped key here would leave the default in place across an entire cluster run
+    (#34), which is a long way to travel to be told nothing.
+    """
+
+    def test_a_mistyped_param_is_rejected(self) -> None:
+        from thresher.spark import SparkThresher
+
+        with pytest.raises(ValueError, match="no_of_bin"):
+            SparkThresher(algorithm_params={"no_of_bin": 4096})
+
+    def test_exact_takes_no_parameters(self) -> None:
+        from thresher.spark import SparkThresher
+
+        with pytest.raises(ValueError, match="nothing to tune"):
+            SparkThresher("exact", algorithm_params={"no_of_bins": 4096})
+
+    def test_the_documented_parameter_is_accepted(
+        self, frame: Callable[[list[float], list[int]], Any]
+    ) -> None:
+        from thresher.spark import SparkThresher
+
+        data = frame([0.1, 0.2, 0.8, 0.9], [-1, -1, 1, 1])
+
+        assert SparkThresher(algorithm_params={"no_of_bins": 64}).optimize_threshold(data)

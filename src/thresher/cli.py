@@ -148,6 +148,9 @@ def _with_cli_hint(message: str) -> str:
             'declare them with the "labels" option, for example Thresher(labels=(0, 1)).',
             "declare them with --labels, for example --labels 0,1",
         )
+    if "Unknown algorithm_params key(s)" in message:
+        # The library names the constructor option; in a terminal these arrive as -p.
+        message = message.replace("Unknown algorithm_params key(s)", "Unknown -p/--param key(s)")
     return message
 
 
@@ -196,7 +199,10 @@ def _list_algorithms(ctx: click.Context, _param: click.Parameter, value: bool) -
     "params",
     multiple=True,
     metavar="KEY=VALUE",
-    help="Algorithm parameter, repeatable. Example: -p n_jobs=4 -p stoch_ratio=0.1",
+    help=(
+        "Algorithm parameter, repeatable. They belong to the algorithm chosen with -a, "
+        "which has to read them. Example: -a sgd -p stoch_ratio=0.1 -p num_of_iters=500"
+    ),
 )
 @click.option(
     "-b",
@@ -239,7 +245,7 @@ def main(
       thresher scores.csv
       thresher scores.csv --labels 0,1 -a grid
       thresher data.tsv --sep '\\t' --score-column pred --label-column actual
-      cat scores.csv | thresher - -p n_jobs=4
+      cat scores.csv | thresher - -a ls -p n_jobs=4
       thresher big.csv --backend ray
     """
     source: Any = sys.stdin if input_file == "-" else Path(input_file)

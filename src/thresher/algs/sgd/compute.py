@@ -21,6 +21,10 @@ stop_patience_default = 3
 alpha_default = 0.01
 stoch_ratio_default = 0.05
 
+#: Every `algorithm_params` key this solver reads. Anything else is a typo, and is
+#: reported as one - see `dispatch.validate_algorithm_params`.
+known_params = frozenset({"num_of_iters", "stop_thresh", "stop_patience", "alpha", "stoch_ratio"})
+
 EvalFunc = Callable[[float, float], tuple[float, float]]
 
 

@@ -29,6 +29,10 @@ from thresher.utils import POSITIVE_LABEL, get_or_default, print_progress_bar
 
 no_of_bins_default = 1024
 
+#: Every `algorithm_params` key this solver reads. Anything else is a typo, and is
+#: reported as one - see `dispatch.validate_algorithm_params`.
+known_params = frozenset({"no_of_bins"})
+
 
 def run(
     scores: Sequence[float],

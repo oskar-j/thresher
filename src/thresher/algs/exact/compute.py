@@ -32,6 +32,11 @@ from thresher.backends import Backend, LocalBackend
 from thresher.exceptions import InsufficientDataError
 from thresher.utils import print_progress_bar
 
+#: This solver is exact, so it has no parameters: there is no accuracy to trade for
+#: speed. Any `algorithm_params` key is therefore a mistake, and is reported as one -
+#: see `dispatch.validate_algorithm_params`.
+known_params: frozenset[str] = frozenset()
+
 
 def run(
     scores: Sequence[float],
