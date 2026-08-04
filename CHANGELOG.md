@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-08-04
+
+Three defects in the approximate solvers, all of which returned a plausible number while
+being wrong or slow rather than failing.
+
+### Fixed
+
+- **`grid` and `sgrid` lay their candidates across the data instead of over `[0, 1]`**
+  ([#25]). The grid was hardcoded to the unit interval on the assumption that scores are
+  probabilities. Given anything else - logits, margins, distances - every candidate fell
+  outside the data, so the answer was whichever edge scored better: chance accuracy,
+  returned in silence. On separable scores spanning `[-5, -2]` both returned `0.0` at 50%
+  accuracy where every other solver reached 100%; they now do too.
+
+  The grid spans `[min(scores), max(scores)]` at the same `10**places + 1` resolution, so
+  the candidates are spent on the range the data occupies, plus one point below the
+  minimum that keeps "classify everything as positive" expressible - the one split the
+  old `[0, 1]` grid could only reach by accident. Ties still go to the leftmost candidate,
+  so a threshold inside the data is never given up to break one.
+
+  For scores that really are in `[0, 1]` the resolution now covers the observed range
+  rather than the whole interval, which changes results very slightly: across the
+  benchmark, `grid` moved from 99.82%/99.98%/100.00% to 99.83%/99.99%/99.92% of the exact
+  optimum on the separable, overlapping and imbalanced sets.
+
+- **The `sgd` step size scales with the data** ([#26]). The first step was a constant
+  `0.05` and only ever decays, so the walk's total travel was bounded at roughly 4.3 score
+  units however far away the boundary was. On scores spanning thousands it stopped short
+  every run - deterministically, unlike this solver's known sampling noise. The step is
+  now a fraction of the score range, exposed as `step_ratio` (default `0.05`), so the same
+  data multiplied by 1,000 returns exactly 1,000× the threshold. Probability-shaped scores
+  span about 1, so their behaviour is unchanged.
+
+- **`sgrid` with `reshuffle=True` samples by index** ([#27]). It built the full list of
+  `(score, class)` pairs before sampling from it, so every candidate cost a pass over the
+  whole input however small `stoch_ratio` was - `O(c·n)` against the documented `O(c·r·n)`,
+  and slower than the exhaustive grid it exists to approximate. At 200,000 rows it went
+  from 5.30 s to 0.80 s, against exhaustive grid's 1.26 s. Its memory column in the
+  benchmark drops from `O(n)` to `O(r·n)` for the same reason.
+
+### Added
+
+- `step_ratio` for `sgd`, above. Documented in the README and `docs/algorithms.md`, which
+  the parity test added in 0.6.3 insisted on before this would build.
+
+[#25]: https://github.com/oskar-j/thresher/issues/25
+[#26]: https://github.com/oskar-j/thresher/issues/26
+[#27]: https://github.com/oskar-j/thresher/issues/27
+
 ## [0.6.3] - 2026-08-03
 
 ### Removed
@@ -817,7 +866,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.6.3...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.6.4...HEAD
+[0.6.4]: https://github.com/oskar-j/thresher/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/oskar-j/thresher/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/oskar-j/thresher/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/oskar-j/thresher/compare/v0.6.0...v0.6.1

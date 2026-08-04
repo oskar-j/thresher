@@ -1,11 +1,18 @@
 """Grid search, in exhaustive and stochastic form.
 
-Both share this one implementation: `run` evaluates every point on a fixed grid over
-[0, 1] against the whole dataset, and `run_stoch` evaluates each point against a random
+Both share this one implementation: `run` evaluates every point on a grid spanning the
+data against the whole dataset, and `run_stoch` evaluates each point against a random
 subsample instead. Cost depends on the grid resolution rather than the input size, which
 once made it a good middle ground; `exact` is cheaper still and does not approximate.
+
+Until 0.6.4 the grid spanned [0, 1] whatever the data was, on the assumption that scores
+are probabilities. For anything else - logits, margins, distances - every candidate fell
+outside the data and the answer was one of the two edges, at chance accuracy and without
+a warning. The grid is now derived from the scores themselves, so the algorithm works on
+any scale.
 """
 
+import math
 import random
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
@@ -45,7 +52,37 @@ def _get_random_projection(
     # int() alone floors to 0 for small inputs (the default ratio of 0.05 does so
     # below 20 rows), which yields an empty projection and a division by zero below.
     sample_size = min(max(1, int(stoch_ratio * len(scores))), len(scores))
-    return random.sample(list(zip(scores, actual_classes, strict=False)), sample_size)
+    # Sampling indices rather than materialised pairs, as `stochastic_process` does.
+    # Building the pairs first cost O(n) per candidate however small the sample, which
+    # made `reshuffle` slower than the exhaustive search it approximates.
+    return [
+        (scores[index], actual_classes[index]) for index in random.sample(range(len(scores)), sample_size)
+    ]
+
+
+def _build_grid(scores: Sequence[float], batch_size: int) -> list[float]:
+    """Lay `batch_size` evenly spaced candidates across the range of the data.
+
+    Args:
+        scores: the values being split.
+        batch_size: how many evenly spaced points to place.
+
+    Returns:
+        The candidates, in the order they should be evaluated: the even grid from the
+        lowest score to the highest, then one point below the lowest. That last one is
+        the only way to express "classify everything as positive", and it comes last so
+        that the first-maximum tie-breaking both paths use prefers a threshold inside
+        the data - the same rule `exact` follows.
+    """
+    lowest, highest = min(scores), max(scores)
+    if lowest == highest:
+        # No range to divide: every threshold at or above the value splits the same way,
+        # and one below it is the only alternative.
+        return [lowest, math.nextafter(lowest, -math.inf)]
+
+    candidates = [float(point) for point in np.linspace(lowest, highest, batch_size)]
+    candidates.append(math.nextafter(lowest, -math.inf))
+    return candidates
 
 
 def run_stoch(
@@ -82,7 +119,7 @@ def run(
     stochastic: bool = False,
     backend: Backend | None = None,
 ) -> float:
-    """Evaluate every point on a fixed grid over [0, 1] and keep the best.
+    """Evaluate every point on a grid spanning the data and keep the best.
 
     Args:
         scores: the values being split.
@@ -91,18 +128,22 @@ def run(
         progress_bar: draw a progress bar on stdout.
         alg_options: recognised keys, each falling back to its module-level default:
             `no_of_decimal_places` (2) sets the grid resolution - the grid holds
-            `10**places + 1` points, so 2 gives 101 candidates at 0.01 apart;
-            `stoch_ratio` (0.05) is the fraction of data sampled per candidate, used only
-            when `stochastic`; `reshuffle` (False) draws a fresh sample for every
-            candidate instead of reusing one, again only when `stochastic`.
+            `10**places + 1` evenly spaced points, so 2 gives 101 of them, spanning the
+            data rather than a fixed interval; `stoch_ratio` (0.05) is the fraction of
+            data sampled per candidate, used only when `stochastic`; `reshuffle` (False)
+            draws a fresh sample for every candidate instead of reusing one, again only
+            when `stochastic`.
         stochastic: score each candidate against a subsample rather than all the data.
         backend: where the counting happens. Defaults to in-process, and is used only for
             the exhaustive path - the stochastic one draws its own subsamples, which
             sharding would change.
 
     Returns:
-        The grid point with the highest measured accuracy. Note the grid always spans
-        [0, 1], so scores outside that range are only ever split at its edges.
+        The grid point with the highest measured accuracy. The grid spans
+        `[min(scores), max(scores)]`, so the resolution is spent on the range the data
+        actually occupies whatever its scale; one further candidate below the minimum
+        expresses "classify everything as positive". Ties go to the leftmost candidate,
+        which keeps the answer inside the data unless the edge is strictly better.
 
     Raises:
         InsufficientDataError: if the grid yielded no candidates at all. It is a
@@ -119,19 +160,24 @@ def run(
 
     batch_size = (10**no_of_decimal_places) + 1
 
+    if not scores:
+        raise InsufficientDataError("The grid produced no candidate thresholds to evaluate.")
+
+    candidates = _build_grid(scores, batch_size)
+    total = len(candidates)
+
     if verbose:
-        print(f"Evaluating {batch_size} solutions. Please wait for results.")
+        print(f"Evaluating {total} solutions over [{min(scores)}, {max(scores)}]. Please wait for results.")
 
     if not stochastic:
         # The exhaustive path is exactly "score these candidates, keep the best", which is
         # what a backend parallelises. max() over indices takes the first maximum, which
         # is the tie-breaking the loop below also used.
-        candidates = [float(point) for point in np.linspace(0, 1, batch_size)]
         if progress_bar:
-            print_progress_bar(0, batch_size)
+            print_progress_bar(0, total)
         tallies = (backend or LocalBackend()).tally_candidates(candidates, scores, actual_classes)
         if progress_bar:
-            print_progress_bar(batch_size, batch_size)
+            print_progress_bar(total, total)
         return candidates[max(range(len(tallies)), key=tallies.__getitem__)]
 
     # Drawn once when every candidate is to be judged against the same subsample; left
@@ -140,18 +186,14 @@ def run(
         _get_random_projection(scores, actual_classes, stoch_ratio) if stochastic and not reshuffle else []
     )
 
-    for iteration, single_point in enumerate(np.linspace(0, 1, batch_size), start=1):
+    for iteration, single_point in enumerate(candidates, start=1):
         if progress_bar:
-            print_progress_bar(iteration, batch_size)
+            print_progress_bar(iteration, total)
 
         count_correct, count_incorrect = 0, 0
 
         projection: Iterable[tuple[float, int]]
-        if not stochastic:
-            # strict=False preserves the historical behaviour; see the note in
-            # linear/compute.py and "Silent wrong answers" in CLAUDE.md.
-            projection = zip(scores, actual_classes, strict=False)
-        elif reshuffle:
+        if reshuffle:
             projection = _get_random_projection(scores, actual_classes, stoch_ratio)
         else:
             projection = one_time_projection
@@ -169,7 +211,7 @@ def run(
             best_threshold, best_accuracy = float(single_point), accuracy
 
     if progress_bar:
-        print_progress_bar(batch_size, batch_size)
+        print_progress_bar(total, total)
 
     if best_threshold is None:
         raise InsufficientDataError("The grid produced no candidate thresholds to evaluate.")

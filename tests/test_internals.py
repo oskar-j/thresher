@@ -10,6 +10,7 @@ import math
 import re
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -19,6 +20,7 @@ from thresher import algorithm, dispatch
 from thresher.algs.common.meta_optimizer import calculate_range_mean, get_mean_value_for_class_pd
 from thresher.algs.common.stochastic import stochastic_process
 from thresher.algs.common.tools import granularity_of_scores
+from thresher.algs.grid import compute as grid_compute
 from thresher.algs.linear.compute import process_batch
 from thresher.utils import get_or_default, map_labels, pairwise, print_progress_bar
 
@@ -321,3 +323,92 @@ class TestDocumentedParameters:
     def test_every_algorithm_has_an_entry_in_the_table(self) -> None:
         """A new solver must declare its parameters, even if it has none."""
         assert set(dispatch.KNOWN_PARAMS) == set(algorithm.available_algorithms)
+
+
+class TestStochasticGridSampling:
+    """`reshuffle` draws its subsample by index, fixed in 0.6.4 (#27).
+
+    It used to build every `(score, class)` pair before sampling from them, so each
+    candidate cost a full pass over the data however small `stoch_ratio` was. That made
+    the option `O(c·n)` against its documented `O(c·r·n)`, and slower than the exhaustive
+    grid it exists to approximate.
+    """
+
+    def test_it_reads_only_the_sampled_rows(self) -> None:
+        """Counting reads is what separates the two implementations.
+
+        A wall-clock assertion would be flaky; this counts instead, and a return to
+        materialising the pairs would read every row per candidate and fail.
+        """
+        size, sample_ratio = 2000, 0.05
+        reads = [0] * size
+
+        class CountingScores(list[float]):
+            def __getitem__(self, index: Any) -> Any:  # type: ignore[override]
+                if isinstance(index, int):
+                    reads[index] += 1
+                return super().__getitem__(index)
+
+        scores = CountingScores([value / size for value in range(size)])
+        actual_classes = [-1 if value < size // 2 else 1 for value in range(size)]
+
+        grid_compute.run_stoch(
+            scores,
+            actual_classes,
+            verbose=False,
+            progress_bar=False,
+            alg_options={"stoch_ratio": sample_ratio, "reshuffle": True, "no_of_decimal_places": 1},
+        )
+
+        # 11 candidates * 5% of 2,000 rows = ~1,100 reads, plus the two the grid needs for
+        # the data's range. Materialising the pairs would be 11 * 2,000 = 22,000.
+        assert sum(reads) < size * 2, (
+            f"read {sum(reads)} values from {size} rows - a full pass per candidate?"
+        )
+
+    def test_the_sample_is_drawn_per_candidate_when_reshuffling(self) -> None:
+        draws = []
+        original = grid_compute._get_random_projection
+
+        def counting(*args: Any, **kwargs: Any) -> Any:
+            draws.append(1)
+            return original(*args, **kwargs)
+
+        scores = [value / 100 for value in range(100)]
+        actual_classes = [-1 if value < 50 else 1 for value in range(100)]
+
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(grid_compute, "_get_random_projection", counting)
+            grid_compute.run_stoch(
+                scores,
+                actual_classes,
+                verbose=False,
+                progress_bar=False,
+                alg_options={"reshuffle": True, "no_of_decimal_places": 1},
+            )
+
+        # One per candidate: 10**1 + 1 grid points, plus the below-minimum edge candidate.
+        assert len(draws) == 12
+
+    def test_one_sample_is_reused_when_not_reshuffling(self) -> None:
+        draws = []
+        original = grid_compute._get_random_projection
+
+        def counting(*args: Any, **kwargs: Any) -> Any:
+            draws.append(1)
+            return original(*args, **kwargs)
+
+        scores = [value / 100 for value in range(100)]
+        actual_classes = [-1 if value < 50 else 1 for value in range(100)]
+
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(grid_compute, "_get_random_projection", counting)
+            grid_compute.run_stoch(
+                scores,
+                actual_classes,
+                verbose=False,
+                progress_bar=False,
+                alg_options={"reshuffle": False, "no_of_decimal_places": 1},
+            )
+
+        assert len(draws) == 1

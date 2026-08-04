@@ -122,8 +122,8 @@ COMPLEXITY = {
 #   ls     every midpoint between adjacent sorted scores, plus the sorted copy
 #   grid   only the grid itself; the data is streamed through a lazy zip, so this is the
 #          one algorithm whose memory does not grow with the input at all
-#   sgrid  materialises the full paired list before sampling from it, so it pays O(n)
-#          despite only reading a fraction - the sampling saves time, not memory
+#   sgrid  the sampled pairs only. Until 0.6.4 it materialised the full paired list
+#          before sampling from it, paying O(n) per candidate despite reading a fraction
 #   gen    the sampled indices, plus a fitness sample per agent per iteration, which is a
 #          constant with respect to n
 #   sgd    the sampled indices only
@@ -134,7 +134,7 @@ MEMORY = {
     "hist": "O(k)",
     "ls": "O(n)",
     "grid": "O(c)",
-    "sgrid": "O(n)",
+    "sgrid": "O(r·n)",
     "gen": "O(r·n)",
     "sgd": "O(r·n)",
 }
