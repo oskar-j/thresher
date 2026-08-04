@@ -46,6 +46,16 @@ DEFAULT_MIN_ROWS_PER_SHARD = 2_000
 #: What one shard's map step returns - a tally list or a counts mapping.
 ResultT = TypeVar("ResultT")
 
+#: How a pool that never came up reports itself, which differs by start method. `spawn`
+#: reaches the executor's own `BrokenProcessPool`; `forkserver` can instead fail while the
+#: driver is still talking to the fork server, which surfaces as a dead connection -
+#: `ConnectionResetError` on Linux, and `BrokenPipeError` or `EOFError` depending on where
+#: in the handshake it died. All of them mean the same thing: no worker ever ran, so the
+#: cause is the environment rather than the data, and the caller needs the same advice.
+#: The map steps here are pure arithmetic over lists and open nothing, so none of these can
+#: reach this from inside a worker's own work.
+BOOTSTRAP_FAILURES = (BrokenProcessPool, ConnectionResetError, BrokenPipeError, EOFError)
+
 INVALID_WORKERS = (
     "num_workers must be -1, meaning every processor bar one, or at least 1 - got {got}. "
     "The 'n_jobs' algorithm parameter of linear search means the same thing."
@@ -222,5 +232,5 @@ class MultiprocessingBackend:
             with ProcessPoolExecutor(max_workers=self._num_workers) as pool:
                 futures: list[Future[ResultT]] = [pool.submit(function, *call) for call in arguments]
                 return [future.result() for future in futures]
-        except BrokenProcessPool as exc:
+        except BOOTSTRAP_FAILURES as exc:
             raise ParallelBootstrapError(PARALLEL_BOOTSTRAP_FAILED) from exc

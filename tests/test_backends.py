@@ -420,10 +420,18 @@ if __name__ == "__main__":
         reason="fork does not re-import __main__, so there is nothing to guard against",
     )
     def test_it_fails_with_an_explanation_rather_than_hanging(self, tmp_path: Path) -> None:
+        """Terminating is half of it; saying what to do is the half that helps.
+
+        How a pool that never came up reports itself depends on the start method - `spawn`
+        raises `BrokenProcessPool`, `forkserver` can die at the connection instead - so
+        this asserts on the translated error rather than on any one of those.
+        """
         completed = self.run_script(tmp_path, self.SCRIPT)
 
         assert completed.returncode != 0, "the unguarded script should not have succeeded"
-        assert "ParallelBootstrapError" in completed.stderr
+        assert "ParallelBootstrapError" in completed.stderr, (
+            f"the underlying failure reached the user untranslated:\n{completed.stderr[-1500:]}"
+        )
         # The message has to carry the fix, not just name the failure.
         assert '__name__ == "__main__"' in completed.stderr
 
