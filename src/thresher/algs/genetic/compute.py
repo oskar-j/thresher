@@ -24,6 +24,20 @@ stoch_ratio_default = 0.02
 mutation_chance_default = 0.05
 mutation_factor_default = 0.10
 
+#: Every `algorithm_params` key this solver reads. Anything else is a typo, and is
+#: reported as one - see `dispatch.validate_algorithm_params`.
+known_params = frozenset(
+    {
+        "population_size",
+        "number_of_generations",
+        "number_of_iterations",
+        "sus_factor",
+        "stoch_ratio",
+        "mutation_chance",
+        "mutation_factor",
+    }
+)
+
 
 @dataclass
 class Agent:

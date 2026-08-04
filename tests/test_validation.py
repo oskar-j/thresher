@@ -223,3 +223,75 @@ class TestConstructorOptions:
         result = thresher.Thresher(labels=None).optimize_threshold([0.1, 0.9], [-1, 1])
 
         assert result == pytest.approx(0.5)
+
+
+class TestAlgorithmParams:
+    """Mistyped `algorithm_params` keys fail at construction, fixed in 0.6.3.
+
+    Every solver reads its parameters through `get_or_default`, so an unknown key was
+    simply absent and the default stayed in place - the run continued with the value the
+    caller believed they had replaced. That silence is also how the README came to
+    document `optimized_start` for years after the code stopped reading it.
+    """
+
+    def test_a_mistyped_param_is_rejected(self) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            thresher.Thresher(algorithm="sgd", algorithm_params={"stoch_ration": 0.5})
+
+        message = str(excinfo.value)
+        assert "stoch_ration" in message
+        # and it should say what this algorithm does read
+        assert "stoch_ratio," in message or "stoch_ratio" in message.split("It reads:")[1]
+
+    def test_the_phantom_parameter_from_the_readme_is_rejected(self) -> None:
+        """`optimized_start` was documented but never read; it now says so."""
+        with pytest.raises(ValueError, match="optimized_start"):
+            thresher.Thresher(algorithm="gen", algorithm_params={"optimized_start": True})
+
+    @pytest.mark.parametrize(
+        ("algorithm_name", "params"),
+        [
+            ("hist", {"no_of_bins": 64}),
+            ("sgd", {"stoch_ratio": 0.5, "num_of_iters": 10, "alpha": 0.02}),
+            ("gen", {"population_size": 8, "number_of_generations": 2, "mutation_chance": 0.1}),
+            ("grid", {"no_of_decimal_places": 1}),
+            ("sgrid", {"no_of_decimal_places": 1, "stoch_ratio": 0.5, "reshuffle": True}),
+            ("ls", {"n_jobs": 1}),
+            ("exact", {}),
+        ],
+    )
+    def test_documented_parameters_are_accepted(self, algorithm_name: str, params: dict[str, object]) -> None:
+        t = thresher.Thresher(algorithm=algorithm_name, algorithm_params=params)
+
+        assert t.optimize_threshold([0.1, 0.2, 0.8, 0.9], [-1, -1, 1, 1])
+
+    def test_exact_takes_no_parameters_at_all(self) -> None:
+        # It is exact, so there is no accuracy to trade for speed - and the message says so
+        # rather than listing an empty set.
+        with pytest.raises(ValueError, match="nothing to tune"):
+            thresher.Thresher(algorithm="exact", algorithm_params={"no_of_bins": 64})
+
+    def test_a_stochastic_only_param_is_rejected_for_exhaustive_grid(self) -> None:
+        """`grid` and `sgrid` share an implementation, but not their parameters.
+
+        `stoch_ratio` is read only on the stochastic path, so passing it to `grid` does
+        nothing - the same failure mode as a typo.
+        """
+        with pytest.raises(ValueError, match="stoch_ratio"):
+            thresher.Thresher(algorithm="grid", algorithm_params={"stoch_ratio": 0.5})
+
+        assert thresher.Thresher(algorithm="sgrid", algorithm_params={"stoch_ratio": 0.5})
+
+    def test_switching_algorithms_revalidates_the_parameters(self) -> None:
+        # The params were valid for sgd; they are not for exact, and quietly dropping them
+        # here would recreate exactly what construction-time validation prevents.
+        t = thresher.Thresher(algorithm="sgd", algorithm_params={"stoch_ratio": 0.5})
+
+        with pytest.raises(ValueError, match="stoch_ratio"):
+            t.set_algorithm("exact")
+
+        assert t.get_current_algorithm()["name"] == "sgd", "the switch must not half-happen"
+
+    def test_a_non_mapping_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="must be a mapping"):
+            thresher.Thresher(algorithm_params=[("no_of_bins", 64)])

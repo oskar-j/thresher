@@ -9,11 +9,13 @@ import importlib.metadata
 import math
 import re
 from collections.abc import Callable
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
 import thresher
+from thresher import algorithm, dispatch
 from thresher.algs.common.meta_optimizer import calculate_range_mean, get_mean_value_for_class_pd
 from thresher.algs.common.stochastic import stochastic_process
 from thresher.algs.common.tools import granularity_of_scores
@@ -265,3 +267,57 @@ class TestPackageVersion:
 
     def test_version_is_exported(self) -> None:
         assert "__version__" in thresher.__all__
+
+
+class TestDocumentedParameters:
+    """The README is the only parameter documentation, so it has to match the code.
+
+    `optimized_start` sat in that list for years after the genetic solver stopped reading
+    it (#34): nothing compared the two, and an unknown key was silently ignored, so
+    following the documentation produced no error and no effect. These compare them.
+    """
+
+    README = Path(__file__).resolve().parent.parent / "README.md"
+
+    def documented_parameters(self) -> set[str]:
+        """Every parameter named in the README's algorithm sections.
+
+        Two shapes are in use: the older sections list parameters as `* `name` (default:
+        ...)` bullets, and `hist` documents its one parameter as a `| `name` | default |`
+        table row. Both count as documentation.
+        """
+        readme = self.README.read_text()
+        documented = set(re.findall(r"^\* `([a-z_0-9]+)`", readme, flags=re.MULTILINE))
+
+        # Only rows under a "Parameter" heading - the README's other tables compare
+        # algorithms, and their first column holds algorithm ids in the same backticks.
+        in_parameter_table = False
+        for line in readme.splitlines():
+            if line.startswith("| Parameter |"):
+                in_parameter_table = True
+                continue
+            if in_parameter_table:
+                row = re.match(r"^\| `([a-z_0-9]+)` \|", line)
+                if row:
+                    documented.add(row.group(1))
+                elif not line.startswith("|"):
+                    in_parameter_table = False
+        return documented
+
+    def test_every_documented_parameter_is_read_by_some_algorithm(self) -> None:
+        implemented = set().union(*dispatch.KNOWN_PARAMS.values())
+
+        assert self.documented_parameters() - implemented == set(), (
+            "the README documents parameters no algorithm reads - passing one does nothing"
+        )
+
+    def test_every_implemented_parameter_is_documented(self) -> None:
+        implemented = set().union(*dispatch.KNOWN_PARAMS.values())
+
+        assert implemented - self.documented_parameters() == set(), (
+            "an algorithm reads a parameter the README does not mention"
+        )
+
+    def test_every_algorithm_has_an_entry_in_the_table(self) -> None:
+        """A new solver must declare its parameters, even if it has none."""
+        assert set(dispatch.KNOWN_PARAMS) == set(algorithm.available_algorithms)

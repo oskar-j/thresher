@@ -138,8 +138,9 @@ def map_labels(labels: Iterable[Any], mapping: Iterable[Any]) -> Iterator[int]:
 def get_or_default(options: Mapping[str, Any], key: str, default: T) -> T:
     """Read one algorithm parameter, falling back to its default.
 
-    Note that unknown keys are never reported: a mistyped parameter name silently leaves
-    the default in place rather than raising.
+    This does not report an unknown key - it cannot tell one from a key meant for a
+    different solver. `dispatch.validate_algorithm_params` is what rejects those, when
+    the `Thresher` is built and the algorithm is known.
 
     Args:
         options: the user-supplied `algorithm_params` mapping.

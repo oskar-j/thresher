@@ -10,7 +10,10 @@ import thresher
 
 
 def main() -> None:
-    t = thresher.Thresher(verbose=True, algorithm_params={"n_jobs": 3})
+    # 'ls' is named explicitly because n_jobs belongs to linear search: it is the one
+    # algorithm with a multiprocessing path. Left to the default this example would have
+    # run the exact sweep in one process, quietly demonstrating nothing.
+    t = thresher.Thresher(algorithm="ls", verbose=True, algorithm_params={"n_jobs": 3})
 
     print("Currently supported algorithms:")
     print(t.get_supported_algorithms())

@@ -1,13 +1,18 @@
 """The user-facing interface: the `Thresher` class."""
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from thresher import algorithm
 from thresher.algorithm import DEFAULT
 from thresher.backends import get_backend
-from thresher.dispatch import run_computations
-from thresher.exceptions import UNKNOWN_OPTIONS, ConfigurationError, NotIterableError
+from thresher.dispatch import run_computations, validate_algorithm_params
+from thresher.exceptions import (
+    ALGORITHM_PARAMS_TYPE,
+    UNKNOWN_OPTIONS,
+    ConfigurationError,
+    NotIterableError,
+)
 from thresher.utils import map_labels, validate_label_mapping
 
 #: Every option `Thresher.__init__` accepts. Anything else is a mistyped name, and a
@@ -81,8 +86,9 @@ class Thresher(ThresherBase):
 
         Raises:
             ConfigurationError: if an option is passed whose name is not one of the
-                documented seven, if 'algorithm' names no known algorithm, or 'backend'
-                no known backend. It is a `ValueError`.
+                documented seven, if 'algorithm' names no known algorithm, if 'backend'
+                names no known backend, or if 'algorithm_params' is not a mapping or
+                holds a key the chosen algorithm does not read. It is a `ValueError`.
             LabelMappingError: if 'labels' is given but is not a two-item list or tuple.
                 It is a `TypeError`.
             BackendDependencyError: if 'backend' is 'ray' and Ray is not installed. It is
@@ -112,10 +118,16 @@ class Thresher(ThresherBase):
 
         self.options["algorithm"] = algorithm.retrieve_by_alias(self.options["algorithm"])
         # Resolve and validate now rather than at optimize_threshold time, so a bad
-        # backend name - or a missing Ray, or an unusable labels pair - is reported when
-        # the object is built, not several seconds into a long run.
+        # backend name - or a missing Ray, or an unusable labels pair, or a mistyped
+        # algorithm parameter - is reported when the object is built, not several seconds
+        # into a long run.
         if self.options.get("labels") is not None:
             validate_label_mapping(self.options["labels"])
+        if not isinstance(self.options["algorithm_params"], Mapping):
+            raise ConfigurationError(
+                ALGORITHM_PARAMS_TYPE.format(got=type(self.options["algorithm_params"]).__name__)
+            )
+        validate_algorithm_params(self.options["algorithm"], self.options["algorithm_params"])
         get_backend(self.options["backend"])
 
     def get_current_algorithm(self) -> dict[str, Any]:
@@ -152,8 +164,14 @@ class Thresher(ThresherBase):
                 `ValueError`. This previously printed a
                 message and carried on with the old algorithm still in place, which left
                 callers believing a switch had happened when it had not.
+            ConfigurationError: if the `algorithm_params` already held by this instance
+                are not all read by the new algorithm - `stoch_ratio` means nothing to
+                `exact`, and silently ignoring it here would recreate the problem
+                validating at construction exists to prevent. Also a `ValueError`.
         """
-        self.options["algorithm"] = algorithm.retrieve_by_alias(algorithm_name)
+        chosen = algorithm.retrieve_by_alias(algorithm_name)
+        validate_algorithm_params(chosen, self.options["algorithm_params"])
+        self.options["algorithm"] = chosen
         return self
 
     @staticmethod

@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Any
 from thresher import algorithm
 from thresher.algs.exact.compute import sweep_class_counts
 from thresher.algs.histogram.compute import no_of_bins_default, sweep_bins
+from thresher.dispatch import validate_algorithm_params
 from thresher.exceptions import (
     BackendDependencyError,
     ConfigurationError,
@@ -113,7 +114,8 @@ class SparkThresher:
                 `hist` returns a summary bounded by its bin count, so it is the one that
                 stays cheap however large the data is.
             algorithm_params: passed through to the algorithm. `hist` reads `no_of_bins`
-                (default 1024).
+                (default 1024); `exact` reads none. A key the chosen algorithm does not
+                read raises `ConfigurationError` rather than being ignored.
             labels: your two class labels, negative first, if they are not -1 and 1 -
                 for example `(0, 1)`.
             verbose: log what is being aggregated.
@@ -134,6 +136,9 @@ class SparkThresher:
 
         self.algorithm = resolved
         self.algorithm_params = algorithm_params or {}
+        # The same check the in-memory interface runs: a key this algorithm does not read
+        # would otherwise leave the default in place across an entire cluster run.
+        validate_algorithm_params(resolved, self.algorithm_params)
         self.labels = labels
         self.verbose = verbose
 
