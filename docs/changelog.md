@@ -9,6 +9,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-08-03
+
+### Removed
+
+- `optimized_start` from the genetic algorithm's documented parameters ([#34]). The
+  solver stopped reading it long ago - the class-mean seeding it once toggled is now
+  unconditional - but it stayed in the README, which is the only parameter
+  documentation. Passing it did nothing, and nothing said so.
+
+### Added
+
+- Each solver now declares the `algorithm_params` keys it reads, as a `known_params`
+  frozenset beside the defaults that define them, and `Thresher(...)` rejects anything
+  else with a `ConfigurationError` naming the offending key and listing the accepted
+  ones. A mistyped `stoch_ration` used to fall back to the default in silence, so the
+  run continued with the value the caller believed they had replaced.
+
+  ```pycon
+  >>> Thresher(algorithm='sgd', algorithm_params={'stoch_ration': 0.5})
+  ConfigurationError: Unknown algorithm_params key(s) for sgd: 'stoch_ration'.
+  It reads: alpha, num_of_iters, stoch_ratio, stop_patience, stop_thresh. ...
+  ```
+
+  `set_algorithm` re-validates, since parameters valid for one algorithm need not be
+  valid for the next, and `SparkThresher` applies the same check - a key ignored there
+  would have been ignored across a whole cluster run. `exact` accepts none at all,
+  and says so: being exact, it has no accuracy to trade for speed.
+
+- `tests/test_internals.py::TestDocumentedParameters` compares the README's parameter
+  lists against those sets in both directions, so neither can drift again. It is what
+  would have caught `optimized_start` in the first place.
+
+### Fixed
+
+- `algorithm_params` is checked to be a mapping, rather than failing later and less
+  clearly.
+- Parameters belonging to the stochastic grid search - `stoch_ratio` and `reshuffle` -
+  are no longer accepted for the exhaustive `grid`, which shares the implementation but
+  never reads them.
+- The README's `algorithm_params` examples, the `-p/--param` help text and
+  `examples/sample_parallel.py` all named a parameter without naming the algorithm that
+  reads it, so they demonstrated a silent no-op under the default algorithm. The example
+  in particular claimed to run linear search across several processes and ran the exact
+  sweep in one ([#35]).
+- The command line reports these as `-p/--param` keys rather than naming the
+  `algorithm_params` constructor option, which a terminal user cannot act on.
+
+[#34]: https://github.com/oskar-j/thresher/issues/34
+[#35]: https://github.com/oskar-j/thresher/issues/35
+
 ## [0.6.2] - 2026-08-03
 
 ### Fixed
@@ -769,7 +819,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.6.2...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.6.3...HEAD
+[0.6.3]: https://github.com/oskar-j/thresher/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/oskar-j/thresher/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/oskar-j/thresher/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/oskar-j/thresher/compare/v0.5.3...v0.6.0
