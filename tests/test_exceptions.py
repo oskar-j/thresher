@@ -38,6 +38,12 @@ FAILURES: list[tuple[str, Callable[[], object], type[Exception], type[Exception]
         ValueError,
     ),
     (
+        "undefined scores",
+        lambda: thresher.Thresher().optimize_threshold([0.1, math.nan, 0.6, 0.9], [-1, -1, 1, 1]),
+        exc.UndefinedScoresError,
+        ValueError,
+    ),
+    (
         "missing labels",
         lambda: thresher.Thresher().optimize_threshold([0.1, 0.9], [math.nan, 1]),
         exc.MissingLabelsError,

@@ -18,8 +18,11 @@ from thresher.exceptions import (
     ConfigurationError,
     EmptyInputError,
     InsufficientDataError,
+    MissingLabelsError,
     SingleClassError,
     ThresherError,
+    UndefinedScoresError,
+    UnexpectedLabelsError,
     UnknownAlgorithmError,
 )
 
@@ -27,6 +30,10 @@ Dataset = tuple[list[float], list[int]]
 DatasetFactory = Callable[..., Dataset]
 
 pyspark = pytest.importorskip("pyspark", reason="PySpark is not installed")
+
+# Safe at module level only after the guard above, which is why the older tests each
+# import it themselves.
+from thresher.spark import SparkThresher  # noqa: E402
 
 DISTRIBUTABLE = ["hist", "exact"]
 
@@ -322,3 +329,109 @@ class TestParameterValidation:
         data = frame([0.1, 0.2, 0.8, 0.9], [-1, -1, 1, 1])
 
         assert SparkThresher(algorithm_params={"no_of_bins": 64}).optimize_threshold(data)
+
+
+class TestRefusesWhatTheMemoryPathRefuses:
+    """Rows the in-memory path rejects, fixed in 0.7.1 (#21, #24).
+
+    The class counts come from equality against the two declared labels, so anything
+    matching neither - a null, a third value, a typo - was simply absent from both and
+    landed in the negative count by omission. Nulls and NaNs in the score column went the
+    same way: Spark's `least` skips nulls, so a row with no score at all was filed in the
+    top bin, and NaN sorts above everything, so it became the maximum and collapsed the
+    whole computation. Each returned a plausible threshold computed from data the
+    in-memory path refuses outright.
+    """
+
+    def test_a_third_label_value_is_refused(self, spark: Any) -> None:
+        frame = spark.createDataFrame(
+            [(0.1, 0), (0.2, 0), (0.6, 1), (0.9, 1), (0.95, 2), (0.97, 2)],
+            "score double, label int",
+        )
+
+        with pytest.raises(UnexpectedLabelsError) as excinfo:
+            SparkThresher(labels=(0, 1)).optimize_threshold(frame, "score", "label")
+
+        # Naming the offending value beats reporting a count.
+        assert 2 in excinfo.value.unexpected
+
+    def test_it_used_to_move_the_answer(self, spark: Any) -> None:
+        """The clean rows alone give one answer; the unusable ones used to shift it."""
+        clean = spark.createDataFrame([(0.1, 0), (0.2, 0), (0.6, 1), (0.9, 1)], "score double, label int")
+        expected = SparkThresher(labels=(0, 1)).optimize_threshold(clean, "score", "label")
+
+        polluted = spark.createDataFrame(
+            [(0.1, 0), (0.2, 0), (0.6, 1), (0.9, 1), (0.95, 2), (0.97, 2), (0.99, 2)],
+            "score double, label int",
+        )
+
+        with pytest.raises(ThresherError):
+            SparkThresher(labels=(0, 1)).optimize_threshold(polluted, "score", "label")
+
+        assert expected == pytest.approx(0.2, abs=0.01), "the clean answer, for contrast"
+
+    def test_null_labels_are_refused(self, spark: Any) -> None:
+        frame = spark.createDataFrame(
+            [(0.1, 0), (0.2, 0), (0.6, 1), (0.9, 1), (0.95, None), (0.97, None)],
+            "score double, label int",
+        )
+
+        with pytest.raises(MissingLabelsError) as excinfo:
+            SparkThresher(labels=(0, 1)).optimize_threshold(frame, "score", "label")
+
+        assert excinfo.value.count == 2
+
+    def test_labels_matching_nothing_are_not_reported_as_a_single_class(self, spark: Any) -> None:
+        """Both counts land at zero, which used to read as "only -1 present" - of nothing."""
+        frame = spark.createDataFrame([(0.1, 7), (0.2, 7), (0.6, 9), (0.9, 9)], "score double, label int")
+
+        with pytest.raises(UnexpectedLabelsError):
+            SparkThresher().optimize_threshold(frame, "score", "label")
+
+    def test_null_scores_are_refused(self, spark: Any) -> None:
+        frame = spark.createDataFrame(
+            [(0.1, -1), (0.2, -1), (0.6, 1), (None, 1), (0.9, 1)], "score double, label int"
+        )
+
+        with pytest.raises(UndefinedScoresError) as excinfo:
+            SparkThresher().optimize_threshold(frame, "score", "label")
+
+        assert excinfo.value.count == 1
+
+    def test_nan_scores_are_refused(self, spark: Any) -> None:
+        frame = spark.createDataFrame(
+            [(0.1, -1), (0.2, -1), (0.6, 1), (float("nan"), 1), (0.9, 1)],
+            "score double, label int",
+        )
+
+        with pytest.raises(UndefinedScoresError):
+            SparkThresher().optimize_threshold(frame, "score", "label")
+
+    def test_exact_refuses_them_too(self, spark: Any) -> None:
+        """`exact` collects by distinct score, where a null died as a bare TypeError."""
+        frame = spark.createDataFrame(
+            [(0.1, -1), (0.2, -1), (0.6, 1), (None, 1), (0.9, 1)], "score double, label int"
+        )
+
+        with pytest.raises(UndefinedScoresError):
+            SparkThresher("exact").optimize_threshold(frame, "score", "label")
+
+    def test_an_integer_score_column_still_works(self, spark: Any) -> None:
+        """`isnan` is undefined for integer types, so the check has to skip it there."""
+        frame = spark.createDataFrame([(1, -1), (2, -1), (6, 1), (9, 1)], "score int, label int")
+
+        assert SparkThresher().optimize_threshold(frame, "score", "label")
+
+    @pytest.mark.parametrize("algorithm_name", DISTRIBUTABLE)
+    def test_clean_data_is_unaffected(
+        self, spark: Any, frame: Callable[[list[float], list[int]], Any], algorithm_name: str
+    ) -> None:
+        scores = [0.1, 0.2, 0.3, 0.7, 0.8, 0.9]
+        actual_classes = [-1, -1, -1, 1, 1, 1]
+
+        distributed = SparkThresher(algorithm_name).optimize_threshold(
+            frame(scores, actual_classes), "score", "label"
+        )
+        in_memory = thresher.Thresher(algorithm=algorithm_name).optimize_threshold(scores, actual_classes)
+
+        assert distributed == in_memory

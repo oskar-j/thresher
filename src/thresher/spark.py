@@ -43,7 +43,10 @@ from thresher.exceptions import (
     ConfigurationError,
     EmptyInputError,
     InsufficientDataError,
+    MissingLabelsError,
     SingleClassError,
+    UndefinedScoresError,
+    UnexpectedLabelsError,
 )
 from thresher.utils import NEGATIVE_LABEL, POSITIVE_LABEL, get_or_default
 
@@ -54,6 +57,10 @@ logger = logging.getLogger(__name__)
 
 #: The algorithms whose work is an aggregation, and so can run in the cluster unchanged.
 SUPPORTED_ALGORITHMS = ("hist", "exact")
+
+#: How many offending label values to name when refusing a frame. Enough to show the
+#: shape of the problem without collecting an unbounded set to the driver.
+UNEXPECTED_LABEL_SAMPLE = 5
 
 #: Collecting more distinct scores than this is worth mentioning: at that point `exact` is
 #: shipping a large result to the driver, and `hist` would do the same job in bounded space.
@@ -70,6 +77,32 @@ NOT_DISTRIBUTABLE = (
     "change the answer rather than only where it is computed - run those through "
     "Thresher() on data that fits in memory."
 )
+
+
+def _is_undefined(functions: Any, df: "DataFrame", score_col: str) -> Any:
+    """Build the expression that is true for a score no threshold can be placed against.
+
+    Null and NaN both qualify, and both used to pass through unnoticed. Spark's `least`
+    skips nulls, so `least(floor(null), bins - 1)` returned the last bin and a row with no
+    score at all was counted as though it held the highest one. NaN was worse: Spark
+    orders it above everything, so it became the maximum, the span became NaN, and every
+    candidate evaluated to NaN - collapsing the answer to "classify everything positive".
+
+    Args:
+        functions: the `pyspark.sql.functions` module.
+        df: the DataFrame, read for the column's declared type.
+        score_col: name of the score column.
+
+    Returns:
+        A column expression, true where the score is unusable.
+    """
+    undefined = functions.col(score_col).isNull()
+    # isnan() is only defined for the floating-point types; asking it of an integer or
+    # decimal column is an analysis error rather than a false, and those types have no NaN
+    # to find in the first place.
+    if df.schema[score_col].dataType.simpleString() in ("double", "float"):
+        undefined = undefined | functions.isnan(functions.col(score_col))
+    return undefined
 
 
 def _require_pyspark() -> Any:
@@ -159,8 +192,19 @@ class SparkThresher:
 
         Raises:
             EmptyInputError: if the DataFrame has no rows.
+            UndefinedScoresError: if any score is null or NaN.
+            MissingLabelsError: if any label is null.
+            UnexpectedLabelsError: if any label is neither of the two declared classes.
             SingleClassError: if only one class is present, leaving nothing to separate.
             InsufficientDataError: if the aggregation came back empty.
+
+        Note:
+            Those refusals are the same ones the in-memory path makes, deliberately. Until
+            0.7.1 none of them existed here: a row whose label matched neither class - a
+            null, a third value, a typo - was counted as a negative simply because it was
+            not a positive, and a null or NaN score was quietly filed in the top bin. Both
+            returned a plausible threshold computed from data the in-memory path would have
+            refused outright.
         """
         functions = _require_pyspark()
 
@@ -169,17 +213,23 @@ class SparkThresher:
         is_negative = functions.col(label_col) == functions.lit(negative_label)
 
         # One pass for the shape of the data: how many rows, of which classes, over what
-        # range. Everything after this is decided from counts.
+        # range, and how much of it is unusable. Everything after this is decided from
+        # counts, including the refusals - which is why the counts are gathered together
+        # rather than a pass at a time.
         summary = df.agg(
             functions.count(functions.lit(1)).alias("rows"),
             functions.sum(is_positive.cast("long")).alias("positives"),
             functions.sum(is_negative.cast("long")).alias("negatives"),
+            functions.sum(_is_undefined(functions, df, score_col).cast("long")).alias("bad_scores"),
+            functions.sum(functions.col(label_col).isNull().cast("long")).alias("null_labels"),
             functions.min(functions.col(score_col)).alias("lowest"),
             functions.max(functions.col(score_col)).alias("highest"),
         ).first()
 
         if summary is None or not summary["rows"]:
             raise EmptyInputError
+
+        self._reject_unusable_rows(df, summary, label_col, is_positive, is_negative)
 
         positives = summary["positives"] or 0
         negatives = summary["negatives"] or 0
@@ -198,6 +248,53 @@ class SparkThresher:
         if self.algorithm.id == "hist":
             return self._binned(df, score_col, is_positive, summary)
         return self._by_distinct_score(df, score_col, is_positive)
+
+    def _reject_unusable_rows(
+        self, df: "DataFrame", summary: Any, label_col: str, is_positive: Any, is_negative: Any
+    ) -> None:
+        """Refuse the rows the in-memory path would refuse, in the same order.
+
+        The class counts come from equality against the two declared labels, so anything
+        matching neither - a null, a third class, a string where a number was meant - is
+        simply absent from both. Nothing downstream notices: it lands in the negative
+        count by omission, because the sweep works from `rows - positives`. Comparing the
+        two counts against the row count is what turns that silence into a refusal, and it
+        costs nothing extra because all three came from the one aggregation.
+
+        Args:
+            df: the source DataFrame, read again only to name offending labels.
+            summary: the first-pass aggregate.
+            label_col: name of the label column.
+            is_positive: a column expression true for the positive class.
+            is_negative: a column expression true for the negative class.
+
+        Returns:
+            None. This is a guard - it either passes silently or raises.
+
+        Raises:
+            UndefinedScoresError, MissingLabelsError, UnexpectedLabelsError: for each case
+                in turn. All are `InvalidInputError`, and so also `ValueError`.
+        """
+        bad_scores = summary["bad_scores"] or 0
+        if bad_scores:
+            raise UndefinedScoresError(bad_scores)
+
+        null_labels = summary["null_labels"] or 0
+        if null_labels:
+            raise MissingLabelsError(null_labels)
+
+        matched = (summary["positives"] or 0) + (summary["negatives"] or 0)
+        if matched != summary["rows"]:
+            # Only now is a second pass worth it: naming the values beats reporting a
+            # count, and this one runs on the way out.
+            offending = (
+                df.select(label_col)
+                .where(~(is_positive | is_negative))
+                .distinct()
+                .limit(UNEXPECTED_LABEL_SAMPLE)
+                .collect()
+            )
+            raise UnexpectedLabelsError([row[label_col] for row in offending])
 
     def _binned(self, df: "DataFrame", score_col: str, is_positive: Any, summary: Any) -> float:
         """Group by bin index and sweep the bins.
@@ -251,7 +348,9 @@ class SparkThresher:
             positives_per_bin[index] = positives_here
             negatives_per_bin[index] = int(row["total"]) - positives_here
 
-        threshold, _ = sweep_bins(negatives_per_bin, positives_per_bin, lowest=lowest, span=span)
+        threshold, _ = sweep_bins(
+            negatives_per_bin, positives_per_bin, lowest=lowest, highest=float(summary["highest"])
+        )
         return threshold
 
     def _by_distinct_score(self, df: "DataFrame", score_col: str, is_positive: Any) -> float:

@@ -23,6 +23,7 @@ ThresherError
 │   └── UnknownBackendError
 ├── InvalidInputError         the data cannot be optimized over     (ValueError)
 │   ├── EmptyInputError
+│   ├── UndefinedScoresError
 │   ├── LengthMismatchError
 │   ├── MissingLabelsError
 │   ├── UnexpectedLabelsError

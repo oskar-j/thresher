@@ -9,6 +9,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-08-05
+
+Four defects that all shared a shape: a plausible number returned from input that should
+never have produced one.
+
+### Fixed
+
+- **`hist` returns a threshold that achieves the accuracy it reports** ([#20]). The
+  binning floors, so a score sitting exactly on a bin edge belongs to the bin *above* it;
+  the prediction rule is `score > threshold`, which sends a score sitting exactly on the
+  threshold to the class *below* it. Returning the edge itself made the two disagree for
+  precisely the samples on that edge, so the sweep reported a count the threshold does not
+  achieve — and could prefer a worse edge to a better one.
+
+  On the reported case it returned a threshold scoring 6/10 while claiming 8/10, with 8/10
+  available from another edge. Across 200 seeds of two-decimal scores at 100 bins, 174 lost
+  more than half a point of accuracy against `exact`; none do now.
+
+  Stepping one representable value below the edge is close but not sufficient: that
+  arithmetic and the `(score - lowest) / span * bins` used to bin are not inverses in
+  floating point, so a score can bin above an edge and still compare below it. The
+  boundary is now found with the binning function itself, which cannot disagree with the
+  counting by construction. Measured over 5,000 randomised shapes, the sweep never reports
+  more than the returned threshold delivers; before this change 9 of them did.
+
+  The same reconstruction problem reached the topmost split, which expressed "classify
+  everything as negative" as `lowest + span`. That is not always the largest score: for
+  scores rounded to a few decimal places - the ordinary case - `0.065 + (0.997 - 0.065)`
+  is `0.9969999999999999`, so the largest samples were classified positive while the
+  counting had them negative. `sweep_bins` now takes `lowest` and `highest` rather than
+  `lowest` and a span, deriving the span from the pair, so the range has one authoritative
+  definition and nothing is rebuilt from it.
+
+  The binning is likewise now one function, `bin_index`, used by both the counting pass
+  and the threshold search, so they cannot drift apart again. Over 20,000 randomised
+  shapes the reported count is exactly what the returned threshold delivers. The Spark
+  path shares `sweep_bins` and is fixed with it.
+
+- **A score that is not a number is refused** ([#23]). Only the labels were ever checked.
+  A NaN reached the solvers and each failed its own way: `exact` sorted it into place and
+  handed it back as the answer — a "threshold" that classifies everything negative, since
+  every comparison against NaN is false — while `hist` raised a bare `ValueError` out of
+  its bin arithmetic. The command line printed `nan` and exited 0, which reads as success.
+  `validate_scores` now runs beside the existing guards, so all seven algorithms refuse it
+  identically with `UndefinedScoresError`. `None` is refused with it; infinities are not,
+  since a threshold can be placed relative to them.
+
+- **The Spark interface refuses the rows the in-memory path refuses** ([#21], [#24]). The
+  class counts come from equality against the two declared labels, so a row matching
+  neither — a null, a third class, a typo — was absent from both and landed in the
+  negative count by omission. Six rows labelled 0/1 returned `0.25`; adding three rows
+  labelled `2` returned `0.99`, where the in-memory path raises. Null and NaN scores went
+  the same way: Spark's `least` skips nulls, so a row with no score was filed in the top
+  bin, and NaN sorts above everything, so it became the maximum and collapsed the sweep.
+
+  A frame whose labels match neither class was also reported as `SingleClassError` naming
+  a class that does not appear in the data at all; it is now `UnexpectedLabelsError`,
+  which names the values that do.
+
+  All the counts come from the first aggregation, so the checks cost no extra pass; only
+  naming the offending labels reads the frame again, and only on the way out.
+
+### Added
+
+- `UndefinedScoresError`, an `InvalidInputError` and so a `ValueError`, carrying `.count`.
+
+### Changed
+
+- `histogram.compute.sweep_bins` takes `highest` where it took `span`, for the reason
+  above. It is a solver internal rather than part of the documented API, and the only
+  callers are `hist` itself and the Spark interface.
+
+[#20]: https://github.com/oskar-j/thresher/issues/20
+[#21]: https://github.com/oskar-j/thresher/issues/21
+[#23]: https://github.com/oskar-j/thresher/issues/23
+[#24]: https://github.com/oskar-j/thresher/issues/24
+
 ## [0.7.0] - 2026-08-04
 
 ### Added
@@ -938,7 +1015,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/oskar-j/thresher/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/oskar-j/thresher/compare/v0.6.4...v0.7.0
 [0.6.4]: https://github.com/oskar-j/thresher/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/oskar-j/thresher/compare/v0.6.2...v0.6.3

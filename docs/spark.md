@@ -96,6 +96,30 @@ subsamples — distributing those would change *which* samples are read, and so 
 which is the one thing a change of venue is not allowed to do. Run them through
 [`Thresher`](api/thresher.md) on data that fits in memory.
 
+## It refuses the same rows the in-memory path refuses
+
+Since `0.7.1`. The class counts come from equality against your two labels, so a row
+matching neither — a null, a third class, a typo — is absent from both counts. It used to
+be counted as a negative by omission, which quietly moved the answer:
+
+| The data holds | Before `0.7.1` | Now |
+|---|---|---|
+| a label that is neither class | counted as negative; threshold moved | `UnexpectedLabelsError`, naming the values |
+| a null label | counted as negative | `MissingLabelsError`, with the count |
+| no label matching either class | `SingleClassError` naming a class **not present in the data** | `UnexpectedLabelsError` |
+| a null score | filed in the top bin, as though it were the largest | `UndefinedScoresError` |
+| a NaN score | became the maximum, collapsing the whole sweep | `UndefinedScoresError` |
+
+All five come from counts gathered in the first aggregation, so the checks cost no extra
+pass over the data. Only naming the offending labels reads the frame again, and only on
+the way out.
+
+!!! note
+
+    This is the same contract [`Thresher`](api/thresher.md) has always enforced in memory.
+    A guarantee that the two return the same answer is worth much less if they disagree
+    about which inputs are answerable.
+
 ## Reading a Spark DataFrame yourself
 
 If your data does fit in memory and you only want the threshold, there is nothing wrong

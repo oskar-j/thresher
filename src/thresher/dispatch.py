@@ -23,7 +23,7 @@ from thresher.algs.linear import compute as linear_compute
 from thresher.algs.sgd import compute as sgd_compute
 from thresher.backends import Backend, LocalBackend
 from thresher.exceptions import UNKNOWN_PARAMS, AlgorithmNotWiredError, ConfigurationError
-from thresher.utils import validate_actual_classes, validate_lengths
+from thresher.utils import validate_actual_classes, validate_lengths, validate_scores
 
 logger = logging.getLogger(__name__)
 
@@ -131,13 +131,14 @@ def run_computations(
         rather than limits.
 
     Raises:
-        ValueError: if the labels are empty, single-class, outside (-1, 1), or a different
-            length from the scores.
+        ValueError: if the scores hold a NaN, or the labels are empty, single-class,
+            outside (-1, 1), or a different length from the scores.
         AlgorithmNotWiredError: if `chosen_algorithm` has no dispatch branch here - what
             happens when an algorithm is added to the registry but not wired up. It is a
             `NotImplementedError`.
     """
     validate_lengths(scores, actual_classes)
+    validate_scores(scores)
     validate_actual_classes(actual_classes)
 
     # A warning rather than a refusal: the thresholds are order-of-magnitude guidance from
