@@ -71,6 +71,25 @@ predictions = (model.predict_proba(X_test)[:, 1] > threshold).astype(int)
 Fit the threshold on data the model was not trained on, for the same reason you would not
 measure accuracy on the training set.
 
+## What you can pass in
+
+Lists, `numpy` arrays and `pandas` Series are all read as they are — the array coming out
+of `predict_proba` above is used where it lies rather than copied into a list first. Only
+input that can be walked once, such as a generator, is collected up, because every
+algorithm needs more than one pass over the data.
+
+The difference shows up on [`hist`](algorithms.md#histogram-sweep), whose memory is meant
+not to follow the input size. Optimizing 200,000 rows peaked at 12.2 MiB for an array
+before 0.7.2 and at 17 KiB now — the same figure a list has always cost.
+
+A Series is read through the array beneath it, so its index never enters into the answer:
+a frame you filtered before slicing the column gives what the equivalent list would.
+
+!!! note
+
+    The result is always a plain `float`. Before 0.7.2 numpy input came back as an
+    `np.float64` from some algorithms and a `float` from others.
+
 ## Choosing an algorithm
 
 The default is the [exact sweep](algorithms.md#exact-sweep), and it is what you want unless

@@ -28,7 +28,7 @@ tests run on every CI matrix job and count towards coverage; without them
 pytest, runnable from anywhere in the repo (0.3.0 moved the fixtures to paths resolved relative to `tests/conftest.py`; before that the suite only worked from inside the old `thresher/tests/`):
 
 ```bash
-uv run pytest                                   # 466 tests
+uv run pytest                                   # 685 tests
 uv run pytest tests/test_validation.py -v       # one module
 uv run pytest -k "sgd and separable"            # by expression
 uv run --isolated --python 3.14 --group dev pytest   # a specific interpreter
@@ -207,7 +207,20 @@ always bind to and dies after sixteen retries.
 
 The binning and the threshold it returns have to agree, and 0.7.1 (#20) is what happens when they do not. Binning floors, so a score on an edge belongs to the bin *above*; prediction is `score > threshold`, which sends a score on the threshold to the class *below*. Returning the edge made the sweep report a count the threshold does not achieve. Stepping one float below the edge is *not* enough - `lowest + span * b / bins` and `(score - lowest) / span * bins` are not inverses in floating point - so `_boundary_threshold` searches for the boundary using `bin_index`, the same function the counting pass uses. Do not replace that search with arithmetic on the edge, and do not let a second copy of the binning formula appear.
 
-That property was unreachable until 0.5.3, because `optimize_threshold` called `list()` on both arguments and so allocated `O(n)` before any algorithm ran. It now passes a `Sequence` straight through. If you reintroduce a copy there, `hist` silently loses the only reason to prefer it - `tests/test_histogram.py::TestBoundedMemory` is what catches that.
+That property was unreachable until 0.5.3, because `optimize_threshold` called `list()` on both arguments and so allocated `O(n)` before any algorithm ran. If you reintroduce a copy there, `hist` silently loses the only reason to prefer it.
+
+### What `optimize_threshold` will and will not copy
+
+0.5.3 handed a `Sequence` through untouched, which was the right idea aimed at the wrong test: neither `numpy.ndarray` nor `pandas.Series` *is* a `Sequence` - they have no `index` or `count` - so the two types this library exists to serve went on being copied for another four releases (#30). `utils.as_sequence` decides it now, and the rule is what the solvers actually use: `len()`, more than one pass, and integer indexing. Anything offering all three is handed over; a generator or a set is not, and becomes a list as before. A `Mapping` is refused deliberately - it has the dunders, but iterating it yields keys where subscripting it yields values.
+
+Two things there are load-bearing:
+
+- **A pandas object is converted with `to_numpy()`, not passed straight through.** `series[0]` is a *label* lookup, so on a frame that has been filtered - the ordinary case, where the surviving rows keep their old labels - it raises `KeyError`, or worse returns a different row without error. `stochastic_process` and `grid._get_random_projection` both sample positions and subscript, so this is not hypothetical. `to_numpy()` is a view for the numeric dtypes, so it costs nothing.
+- **`optimize_threshold` coerces its result with `float()`.** It is the one place the package hands an answer back. `exact`, `hist` and `ls` leaked an `np.float64` for numpy input while `grid` returned a `float`, so identical data gave differently-typed answers depending on the algorithm; `np.float64` subclasses `float`, so no `isinstance` assertion could see it, and under numpy 2 it shows up as `np.float64(0.35)` wherever the result is printed.
+
+Not copying costs some CPU: iterating an ndarray boxes each element where a list hands over an existing reference, which measured ~1.3× on `hist` at 500,000 rows against roughly 700× less memory. That is the trade, and it is the right way round for the algorithm whose selling point is the memory.
+
+Three solvers used to ask `if not scores:`, which raises for an array of more than one element. They count instead. `tests/test_array_inputs.py` covers all of this; note that `tests/test_histogram.py::TestBoundedMemory` **cannot**, because it calls `histogram.run` directly with lists and so never reaches the interface where the copy was - which is exactly why the bug survived a release that measured the very property it broke.
 
 ### Why `exact` supersedes the rest
 

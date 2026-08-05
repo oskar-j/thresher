@@ -13,7 +13,7 @@ from thresher.exceptions import (
     ConfigurationError,
     NotIterableError,
 )
-from thresher.utils import map_labels, validate_label_mapping
+from thresher.utils import as_sequence, map_labels, validate_label_mapping
 
 #: Every option `Thresher.__init__` accepts. Anything else is a mistyped name, and a
 #: mistyped name is never harmless here: it leaves the default silently in place, so the
@@ -194,13 +194,19 @@ class Thresher(ThresherBase):
         """Find the threshold that classifies the most samples correctly.
 
         Args:
-            scores: the scores to split, e.g. the output of a `predict_proba`.
+            scores: the scores to split, e.g. the output of a `predict_proba`. A list, a
+                `numpy.ndarray` and a `pandas.Series` are all read where they lie; an
+                iterator or a generator is consumed into a list, because the solvers need
+                more than one pass.
             actual_classes: the ground-truth classes, as -1 and 1 unless the 'labels'
-                option declares a different pair.
+                option declares a different pair. Read on the same terms as `scores`,
+                except that declaring 'labels' means translating them, which does copy.
 
         Returns:
-            The threshold yielding the highest fraction of correctly classified samples.
-            Where several thresholds tie, any one of them may be returned.
+            The threshold yielding the highest fraction of correctly classified samples,
+            always as a plain `float` - `numpy` input used to leak an `np.float64` back
+            out, and only from some of the algorithms. Where several thresholds tie, any
+            one of them may be returned.
 
         Raises:
             NotIterableError: if either argument is not iterable, naming the offending
@@ -213,24 +219,25 @@ class Thresher(ThresherBase):
         if not isinstance(actual_classes, Iterable):
             raise NotIterableError("actual_classes")
 
-        # Materialise only what has to be. Copying a caller's list costs memory
-        # proportional to the input, which defeats the algorithms whose own allocation
-        # does not grow with it - `hist` holds a few kilobytes of counters however large
-        # the data is, and would still have paid for two full copies to get here. A
-        # Sequence can already be measured and iterated more than once, which is all the
-        # solvers need; anything else is consumed into a list as before.
-        score_values: Sequence[float] = scores if isinstance(scores, Sequence) else list(scores)
+        # Materialise only what has to be - see `utils.as_sequence`. Copying costs memory
+        # proportional to the input, which defeats the algorithms whose own allocation does
+        # not grow with it. The one unavoidable copy is the label mapping, which is a
+        # translation rather than a hand-over: `labels=(0, 1)` has to produce new values.
+        score_values: Sequence[float] = as_sequence(scores)
         class_values: Sequence[int]
         if self.options.get("labels") is not None:
             class_values = list(map_labels(actual_classes, self.options["labels"]))
-        elif isinstance(actual_classes, Sequence):
-            class_values = actual_classes
         else:
-            class_values = list(actual_classes)
+            class_values = as_sequence(actual_classes)
 
         chosen_algorithm: algorithm.Algorithm = self.options["algorithm"]
 
         if self.options["verbose"]:
             print(f"Chosen algorithm: {chosen_algorithm.full_name}")
 
-        return self._compute(chosen_algorithm, score_values, class_values)
+        # Coerced once, here, because this is the single place the package hands an answer
+        # back. numpy scalars are floats and behave as floats, but they carry their type
+        # into everything the result is put in - under numpy 2 a threshold read back out of
+        # a dict or a log line reads `np.float64(0.35)` - and which solvers leaked one
+        # depended on the algorithm, so the same data gave two different-looking answers.
+        return float(self._compute(chosen_algorithm, score_values, class_values))

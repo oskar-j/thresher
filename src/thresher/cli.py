@@ -259,7 +259,15 @@ def main(
     if frame.empty:
         raise click.ClickException(f"{input_file} has no rows to optimize over.")
 
-    scores = _select_column(frame, score_column, 0, "score").tolist()
+    # The score column is handed over as pandas holds it. Since 0.7.2 `optimize_threshold`
+    # reads a Series where it lies, so `.tolist()` here would be a second copy of the
+    # column - at four times the bytes, since a Python list of floats holds pointers to
+    # boxed objects - on top of the frame pandas has already built. That matters most for
+    # exactly the case the CLI is used for: `thresher big.csv -a hist`.
+    #
+    # The labels keep theirs. They are the values that get named back to the user when
+    # they are wrong, and 'Found np.int64(0)' is not an improvement on 'Found 0'.
+    scores = _select_column(frame, score_column, 0, "score")
     actual_classes = _select_column(frame, label_column, 1, "label").tolist()
 
     options: dict[str, Any] = {

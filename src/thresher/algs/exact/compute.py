@@ -74,7 +74,10 @@ def run(
     Raises:
         InsufficientDataError: if no scores were given. It is a `ValueError`.
     """
-    if not scores:
+    # Length rather than truthiness: `not array` is ambiguous for a numpy array of more
+    # than one element, and raises. Since 0.7.2 the input reaches here as the caller's own
+    # container, so it need not be a list.
+    if len(scores) == 0:
         raise InsufficientDataError("At least one score is needed to evaluate a threshold.")
 
     # The sweep needs only the class counts at each distinct score, never the samples

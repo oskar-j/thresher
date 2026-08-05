@@ -9,6 +9,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-08-05
+
+numpy and pandas input stops being second-class: it is no longer copied, and no longer
+comes back with a different type than a list would.
+
+### Fixed
+
+- **A `numpy.ndarray` and a `pandas.Series` are read where they lie** ([#30]).
+  `optimize_threshold` kept its argument only when it was a `collections.abc.Sequence`,
+  and neither of those is one — they have no `index` or `count` — so both were copied to
+  lists on the way in. That is the `O(n)` allocation 0.5.3 removed, reintroduced for the
+  two types this library is built around, and it made `hist`'s bounded memory unreachable
+  through the public API. Optimizing 200,000 rows, peak allocation measured with
+  `tracemalloc`:
+
+  | input | before | now |
+  |---|---|---|
+  | `list` | 18 KiB | 18 KiB |
+  | `numpy.ndarray` | 12,520 KiB | 17 KiB |
+  | `pandas.Series` | 7,832 KiB | 18 KiB |
+
+  What is handed over is now decided by what the solvers use — `len()`, more than one
+  pass, and integer indexing — rather than by a protocol wider than any of them. A
+  generator or a set still becomes a list, because one pass is not enough.
+
+  A Series is handed over as the array underneath it rather than as itself. `series[0]`
+  is a *label* lookup, so on a frame that has been filtered — where the surviving rows
+  keep the labels they had — passing it straight through would make the sampling solvers
+  read the wrong row, or none. `to_numpy()` is a view for the dtypes a score column has,
+  so this costs nothing and the index cannot reach the answer.
+
+  Not copying does cost some CPU: iterating an array boxes each element where a list
+  hands over a reference, which measures about 1.3× on `hist` at 500,000 rows — against
+  roughly 700× less memory, which is the trade worth making for the algorithm chosen for
+  its memory.
+
+- **The result is always a plain `float`** ([#30]). numpy input leaked an `np.float64`
+  out of `exact`, `hist` and `ls`, but not out of `grid` — so identical data returned a
+  differently-typed answer depending on the algorithm, against an annotation promising
+  `float` either way. It subclasses `float`, so nothing broke and no `isinstance` check
+  could see it; under numpy ≥ 2 it surfaces as `np.float64(0.35)` wherever the result is
+  printed or embedded. `optimize_threshold` coerces once, at the single point the package
+  returns an answer.
+
+- `exact`, `hist` and `grid` asked `if not scores:`, which raises `ValueError` for an
+  array of more than one element rather than answering the question. They check the
+  length.
+
+### Changed
+
+- The command line hands the score column to `optimize_threshold` as pandas holds it,
+  instead of calling `.tolist()` on it. The frame is already in memory; the list was a
+  second copy of the column at four times the bytes. The label column is still converted,
+  because those values get named back to the user when they are wrong and `Found
+  np.int64(0)` is not an improvement on `Found 0`.
+
+### Added
+
+- `tests/test_array_inputs.py`, which passes an `ndarray` and a `Series` — including one
+  whose index has gaps — through every algorithm. Nothing anywhere did before, which is
+  why neither symptom above had surfaced. It asserts the container cannot change the
+  answer, that the answer is a `float`, and that allocation stays flat, this last one
+  through `Thresher` rather than against a solver directly: the existing bounded-memory
+  test calls `histogram.run` with lists, so it passed throughout with the interface
+  copying both arguments in full.
+
+[#30]: https://github.com/oskar-j/thresher/issues/30
+
 ## [0.7.1] - 2026-08-05
 
 Four defects that all shared a shape: a plausible number returned from input that should
@@ -1015,7 +1083,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/oskar-j/thresher/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/oskar-j/thresher/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/oskar-j/thresher/compare/v0.6.4...v0.7.0
 [0.6.4]: https://github.com/oskar-j/thresher/compare/v0.6.3...v0.6.4

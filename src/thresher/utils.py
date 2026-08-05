@@ -3,7 +3,7 @@
 import math
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from itertools import tee
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 from thresher.exceptions import (
     LABEL_MAPPING_LENGTH,
@@ -22,6 +22,53 @@ NEGATIVE_LABEL = -1
 POSITIVE_LABEL = 1
 
 T = TypeVar("T")
+
+
+def as_sequence(values: Iterable[T]) -> Sequence[T]:
+    """Give the solvers something they can measure, iterate twice and index - cheaply.
+
+    The solvers need three things from their input: `len()`, more than one pass over it,
+    and integer indexing. A `list` is the obvious way to guarantee all three, and building
+    one was what this used to do for anything that was not already a `Sequence`. That
+    quietly included the two types this library is built around: neither `numpy.ndarray`
+    nor `pandas.Series` is registered as a `Sequence` - they have no `index` or `count` -
+    so both were copied on the way in, at `O(n)`, which is the allocation 0.5.3 removed
+    from `optimize_threshold` in the first place. `hist` holds a few kilobytes of counters
+    however large the data is, and was still paying 12 MB to receive 200,000 rows.
+
+    Args:
+        values: the scores or the classes, however the caller holds them.
+
+    Returns:
+        The caller's own container where it already does what the solvers need, and a list
+        built from it where it does not - a generator, a set, a dict view. A `pandas`
+        object is handed over as its underlying array, which is a view rather than a copy
+        for the numeric dtypes a score column has.
+    """
+    if isinstance(values, Sequence):
+        return values
+
+    # pandas indexes by *label*: `series[0]` looks up the label 0 rather than the first
+    # element, so on a Series that has been filtered - the ordinary case, and one where
+    # the labels keep the gaps - it either raises KeyError or returns the wrong row. That
+    # matters because `stochastic_process` and `grid` sample positions. `to_numpy()` hands
+    # back the buffer underneath, which indexes by position and shares its memory.
+    converter = getattr(values, "to_numpy", None)
+    candidate: Any = converter() if callable(converter) else values
+
+    # A Mapping is deliberately excluded: it has both dunders, but iterating one yields
+    # keys while indexing it yields values, and the solvers do both. It becomes a list of
+    # its keys, exactly as before.
+    if (
+        hasattr(candidate, "__len__")
+        and hasattr(candidate, "__getitem__")
+        and not isinstance(candidate, Mapping)
+    ):
+        # An ndarray satisfies the three requirements above without satisfying `Sequence`,
+        # which is a wider protocol than anything here uses.
+        return cast("Sequence[T]", candidate)
+
+    return list(values)
 
 
 def validate_lengths(scores: Sequence[float], actual_classes: Sequence[int]) -> None:

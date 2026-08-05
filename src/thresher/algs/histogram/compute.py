@@ -61,7 +61,8 @@ def run(
     Raises:
         InsufficientDataError: if no scores were given, or `no_of_bins` is below one.
     """
-    if not scores:
+    # Length rather than truthiness - see the note in `algs/exact/compute.py`.
+    if len(scores) == 0:
         raise InsufficientDataError("At least one score is needed to evaluate a threshold.")
 
     bins: int = get_or_default(alg_options, "no_of_bins", no_of_bins_default)
