@@ -111,6 +111,11 @@ memory is set by the resolution, not the input:
 | 100,000 rows | 19 KB | 12 MB |
 | 1,000,000 rows | **49 KB** | 107 MB |
 
+Those figures hold whatever you hand it — a list, an array or a Series. Until 0.7.2 they
+only held for a list, because `optimize_threshold` copied the other two on the way in and
+so allocated the input size before this algorithm ever ran. See
+[what you can pass in](getting-started.md#what-you-can-pass-in).
+
 The cost is resolution. A threshold can only sit on a bin edge, so the answer is off by at
 most one bin width — an error you control directly, and the same every run, unlike the
 sampling-based approximations. At the default 1,024 bins it captures 99.98% of the

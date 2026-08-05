@@ -43,6 +43,7 @@ underneath — which of the seven search algorithms runs, and how hard it looks.
 ## Table of contents
 
 - [Project description](#project-description)
+  - [What you can pass in](#what-you-can-pass-in)
   - [Choosing an algorithm](#choosing-an-algorithm)
 - [Implemented algorithms](#implemented-algorithms)
   - [Exact sweep](#exact-sweep)
@@ -92,6 +93,30 @@ returns:
     The threshold value that yields ​the highest fraction of correctly classified
     samples​. If multiple thresholds give the optimal fraction, return any threshold.
 ```
+
+### What you can pass in
+
+A list, a `numpy.ndarray` and a `pandas.Series` are all read where they lie — the scores
+straight out of `predict_proba`, or a column sliced off a frame, are handed to the solver
+without being copied first. Anything that can only be walked once (a generator, a `map`,
+a file of numbers) is collected into a list, because every algorithm needs at least two
+passes over the data.
+
+That matters for [`hist`](#histogram-sweep), whose whole point is that its memory does not
+follow the input size. Optimizing 200,000 rows, measured with `tracemalloc`:
+
+| input | before 0.7.2 | now |
+|---|---|---|
+| `list` | 18 KiB | 18 KiB |
+| `numpy.ndarray` | 12,520 KiB | 17 KiB |
+| `pandas.Series` | 7,832 KiB | 18 KiB |
+
+A `Series` is read through the array underneath it, so a frame you have filtered — one
+whose index no longer counts from zero — gives the same answer as the equivalent list.
+
+The result is always a plain `float`. Passing numpy in used to get an `np.float64` back
+from `exact`, `hist` and `ls`, but a `float` from `grid`, so the same data returned two
+differently-typed answers depending on the algorithm.
 
 ### Choosing an algorithm
 

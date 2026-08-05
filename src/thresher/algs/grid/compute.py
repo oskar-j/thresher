@@ -160,7 +160,8 @@ def run(
 
     batch_size = (10**no_of_decimal_places) + 1
 
-    if not scores:
+    # Length rather than truthiness - see the note in `algs/exact/compute.py`.
+    if len(scores) == 0:
         raise InsufficientDataError("The grid produced no candidate thresholds to evaluate.")
 
     candidates = _build_grid(scores, batch_size)
