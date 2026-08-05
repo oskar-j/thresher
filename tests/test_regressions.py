@@ -188,6 +188,23 @@ def accuracy_of(threshold: float, scores: list[float], actual_classes: list[int]
     ) / len(scores)
 
 
+def reading_all_the_data(algorithm_name: str) -> dict[str, float]:
+    """`algorithm_params` making a sampling solver read every row it is given.
+
+    The tests below are about *where a solver looks* - whether its candidates are laid
+    over the data or over a hardcoded `[0, 1]`. `sgrid`, `sgd` and `gen` answer that
+    question through a subsample, and at the default ratios those subsamples are tiny:
+    `sgrid` scores each candidate against 5 of 100 rows, or against a single row on the
+    three-row inputs here. So the assertions were being decided by the draw as much as by
+    the grid, and `sgrid` missed exact accuracy for 43 of 200 starting random states -
+    which is a fact about sampling, not about the bug these tests were written for.
+
+    Raising the ratio to 1 removes that interference and leaves the property itself, which
+    is the one the test names. It costs nothing: the inputs are at most a hundred rows.
+    """
+    return {"stoch_ratio": 1.0} if algorithm_name in ("sgrid", "sgd", "gen") else {}
+
+
 class TestScoresOutsideTheUnitInterval:
     """Scores need not be probabilities, fixed in 0.6.4 (#25).
 
@@ -202,7 +219,9 @@ class TestScoresOutsideTheUnitInterval:
     def test_every_algorithm_separates_data_far_from_the_unit_interval(self, algorithm_name: str) -> None:
         scores, actual_classes = self.NEGATIVE_RANGE
 
-        result = thresher.Thresher(algorithm=algorithm_name).optimize_threshold(scores, actual_classes)
+        result = thresher.Thresher(
+            algorithm=algorithm_name, algorithm_params=reading_all_the_data(algorithm_name)
+        ).optimize_threshold(scores, actual_classes)
 
         # The data is cleanly separable, so anything short of 1.0 means the solver never
         # looked where the boundary is. grid/sgrid used to score 0.5 here.
@@ -214,7 +233,9 @@ class TestScoresOutsideTheUnitInterval:
         scores = [value * scale for value in (0.1, 0.2, 0.8, 0.9)] * 25
         actual_classes = [-1, -1, 1, 1] * 25
 
-        result = thresher.Thresher(algorithm=algorithm_name).optimize_threshold(scores, actual_classes)
+        result = thresher.Thresher(
+            algorithm=algorithm_name, algorithm_params=reading_all_the_data(algorithm_name)
+        ).optimize_threshold(scores, actual_classes)
 
         assert accuracy_of(result, scores, actual_classes) == 1.0
 
@@ -227,7 +248,9 @@ class TestScoresOutsideTheUnitInterval:
         """
         scores, actual_classes = [0.1, 0.2, 0.3], [1, 1, -1]
 
-        result = thresher.Thresher(algorithm=algorithm_name).optimize_threshold(scores, actual_classes)
+        result = thresher.Thresher(
+            algorithm=algorithm_name, algorithm_params=reading_all_the_data(algorithm_name)
+        ).optimize_threshold(scores, actual_classes)
 
         assert result < min(scores)
         assert accuracy_of(result, scores, actual_classes) == pytest.approx(2 / 3)
@@ -235,9 +258,9 @@ class TestScoresOutsideTheUnitInterval:
     @pytest.mark.parametrize("algorithm_name", ["grid", "sgrid"])
     def test_identical_scores_do_not_break_the_grid(self, algorithm_name: str) -> None:
         # min == max leaves no range to divide into candidates.
-        result = thresher.Thresher(algorithm=algorithm_name).optimize_threshold(
-            [0.5] * 6, [-1, -1, -1, 1, 1, 1]
-        )
+        result = thresher.Thresher(
+            algorithm=algorithm_name, algorithm_params=reading_all_the_data(algorithm_name)
+        ).optimize_threshold([0.5] * 6, [-1, -1, -1, 1, 1, 1])
 
         assert result <= 0.5
 
