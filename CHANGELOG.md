@@ -32,9 +32,18 @@ never have produced one.
   counting by construction. Measured over 5,000 randomised shapes, the sweep never reports
   more than the returned threshold delivers; before this change 9 of them did.
 
-  The binning is now one function, `bin_index`, used by both the counting pass and the
-  threshold search, so they cannot drift apart again. The Spark path shares `sweep_bins`
-  and is fixed with it.
+  The same reconstruction problem reached the topmost split, which expressed "classify
+  everything as negative" as `lowest + span`. That is not always the largest score: for
+  scores rounded to a few decimal places - the ordinary case - `0.065 + (0.997 - 0.065)`
+  is `0.9969999999999999`, so the largest samples were classified positive while the
+  counting had them negative. `sweep_bins` now takes `lowest` and `highest` rather than
+  `lowest` and a span, deriving the span from the pair, so the range has one authoritative
+  definition and nothing is rebuilt from it.
+
+  The binning is likewise now one function, `bin_index`, used by both the counting pass
+  and the threshold search, so they cannot drift apart again. Over 20,000 randomised
+  shapes the reported count is exactly what the returned threshold delivers. The Spark
+  path shares `sweep_bins` and is fixed with it.
 
 - **A score that is not a number is refused** ([#23]). Only the labels were ever checked.
   A NaN reached the solvers and each failed its own way: `exact` sorted it into place and
@@ -63,6 +72,12 @@ never have produced one.
 ### Added
 
 - `UndefinedScoresError`, an `InvalidInputError` and so a `ValueError`, carrying `.count`.
+
+### Changed
+
+- `histogram.compute.sweep_bins` takes `highest` where it took `span`, for the reason
+  above. It is a solver internal rather than part of the documented API, and the only
+  callers are `hist` itself and the Spark interface.
 
 [#20]: https://github.com/oskar-j/thresher/issues/20
 [#21]: https://github.com/oskar-j/thresher/issues/21

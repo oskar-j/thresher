@@ -234,7 +234,7 @@ class TestBinEdgeAgreesWithPrediction:
             else:
                 negatives[index] += 1
 
-        threshold, reported = sweep_bins(negatives, positives, lowest=lowest, span=span)
+        threshold, reported = sweep_bins(negatives, positives, lowest=lowest, highest=highest)
         achieved = sum(
             1
             for score, actual in zip(scores, actual_classes, strict=True)
@@ -273,6 +273,39 @@ class TestBinEdgeAgreesWithPrediction:
         best_available = max(accuracy(edge, scores, actual_classes) for edge in reachable)
 
         assert accuracy(result, scores, actual_classes) == pytest.approx(best_available)
+
+    def test_the_maximum_is_taken_as_given_not_rebuilt_from_the_span(self) -> None:
+        """`lowest + span` does not always reconstruct the largest score.
+
+        With scores rounded to a few decimal places - the ordinary case, and the one that
+        triggered this defect in the first place - `0.065 + (0.997 - 0.065)` is
+        `0.9969999999999999`. A threshold there classifies the largest samples positive
+        while the counting that chose the split had them negative, so the sweep reported
+        4 correct where the threshold delivered 2.
+        """
+        lowest, highest = 0.065, 0.997
+        assert lowest + (highest - lowest) != highest, "the premise: the rebuild is lossy"
+
+        scores = [lowest, 0.5, 0.8, highest, highest]
+        actual_classes = [1, -1, -1, -1, -1]
+        bins = 4
+        span = highest - lowest
+        negatives, positives = [0] * bins, [0] * bins
+        for score, actual in zip(scores, actual_classes, strict=True):
+            index = bin_index(score, lowest, span, bins)
+            if actual == 1:
+                positives[index] += 1
+            else:
+                negatives[index] += 1
+
+        threshold, reported = sweep_bins(negatives, positives, lowest=lowest, highest=highest)
+        achieved = sum(
+            1
+            for score, actual in zip(scores, actual_classes, strict=True)
+            if (1 if score > threshold else -1) == actual
+        )
+
+        assert achieved == reported == 4
 
     def test_the_topmost_edge_still_means_classify_everything_negative(self) -> None:
         """That split needs the maximum itself, so it is the one edge left alone."""

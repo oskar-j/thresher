@@ -348,7 +348,9 @@ class SparkThresher:
             positives_per_bin[index] = positives_here
             negatives_per_bin[index] = int(row["total"]) - positives_here
 
-        threshold, _ = sweep_bins(negatives_per_bin, positives_per_bin, lowest=lowest, span=span)
+        threshold, _ = sweep_bins(
+            negatives_per_bin, positives_per_bin, lowest=lowest, highest=float(summary["highest"])
+        )
         return threshold
 
     def _by_distinct_score(self, df: "DataFrame", score_col: str, is_positive: Any) -> float:

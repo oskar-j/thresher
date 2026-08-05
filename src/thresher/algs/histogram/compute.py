@@ -87,7 +87,7 @@ def run(
             negatives[index] += 1
 
     best_threshold, best_correct = sweep_bins(
-        negatives, positives, lowest=lowest, span=span, progress_bar=progress_bar
+        negatives, positives, lowest=lowest, highest=highest, progress_bar=progress_bar
     )
 
     if verbose:
@@ -165,7 +165,7 @@ def sweep_bins(
     negatives: Sequence[int],
     positives: Sequence[int],
     lowest: float,
-    span: float,
+    highest: float,
     progress_bar: bool = False,
 ) -> tuple[float, int]:
     """Find the best threshold from binned class counts.
@@ -179,13 +179,16 @@ def sweep_bins(
         negatives: count of negative samples in each bin, lowest bin first.
         positives: count of positive samples in each bin, in the same order.
         lowest: the smallest score the bins cover.
-        span: the distance from the smallest score to the largest. Zero when every score
-            is identical, in which case there is one usable bin.
+        highest: the largest. The two are taken rather than a span because `lowest + span`
+            does not always reconstruct it: for scores rounded to a few decimal places -
+            the ordinary case - `0.065 + (0.997 - 0.065)` is `0.9969999999999999`, and a
+            threshold there classifies the largest samples positive while the counting
+            below has them negative. `span` is derived from the pair, once.
         progress_bar: draw a progress bar on stdout while sweeping.
 
     Returns:
         The best threshold expressible on a bin edge, and how many samples it classifies
-        correctly.
+        correctly - a count the threshold is guaranteed to achieve.
 
     Raises:
         InsufficientDataError: if there are no bins to sweep.
@@ -193,6 +196,8 @@ def sweep_bins(
     bins = len(negatives)
     if bins == 0 or bins != len(positives):
         raise InsufficientDataError("Bin counts are missing or do not line up.")
+
+    span = highest - lowest
 
     total_positive = sum(positives)
 
@@ -228,8 +233,9 @@ def sweep_bins(
         best_threshold = math.nextafter(lowest, -math.inf)
     elif best_index == bins - 1:
         # The topmost edge is the largest score itself: nothing exceeds it, which is how
-        # "classify everything as negative" is expressed.
-        best_threshold = lowest + span
+        # "classify everything as negative" is expressed. Taken as given rather than
+        # rebuilt from the span - see the note on `highest` above.
+        best_threshold = highest
     else:
         best_threshold = _boundary_threshold(lowest, span, best_index + 1, bins)
 
