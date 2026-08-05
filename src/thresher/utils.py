@@ -14,6 +14,7 @@ from thresher.exceptions import (
     LengthMismatchError,
     MissingLabelsError,
     SingleClassError,
+    UndefinedScoresError,
     UnexpectedLabelsError,
 )
 
@@ -43,6 +44,41 @@ def validate_lengths(scores: Sequence[float], actual_classes: Sequence[int]) -> 
     """
     if len(scores) != len(actual_classes):
         raise LengthMismatchError(len(scores), len(actual_classes))
+
+
+def validate_scores(scores: Sequence[float]) -> None:
+    """Check that every score is a number a threshold can be placed against.
+
+    NaN is the case that matters. Every comparison against it is false, so `score > t` is
+    false for any threshold, and a NaN that reaches a solver is not merely ignored - it
+    propagates. `exact` sorted it into place and handed the NaN back as the answer, a
+    "threshold" that classifies the whole dataset negative; `hist` failed instead, but
+    with a bare `ValueError` out of its bin arithmetic. One NaN in a `predict_proba`
+    column is an ordinary upstream accident, so it is worth one pass to catch here.
+
+    `None` is treated the same way: it is the shape a blank takes in a plain Python list,
+    where pandas would have produced NaN, and it used to reach the sort and fail there
+    with a bare `TypeError`. The Spark interface refuses a null score for the same reason.
+
+    Infinities are left alone. They order correctly against everything else, so a
+    threshold can be placed relative to them, and `exact` handles them already.
+
+    Args:
+        scores: the values being split.
+
+    Returns:
+        None. This is a guard - it either passes silently or raises.
+
+    Raises:
+        UndefinedScoresError: if any score is NaN. It is a `ValueError`.
+    """
+    # `value != value` is true only for NaN, and unlike `math.isnan` it needs no coercion
+    # and holds for numpy's float types as well as Python's. None is counted with it: a
+    # blank cell arrives as one from a bare Python list where pandas would have given NaN,
+    # and it used to reach the sort and fail there as a bare TypeError.
+    undefined = sum(1 for value in scores if value is None or value != value)
+    if undefined:
+        raise UndefinedScoresError(undefined)
 
 
 def validate_actual_classes(actual_classes: Sequence[int]) -> None:

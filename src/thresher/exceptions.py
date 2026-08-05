@@ -84,6 +84,12 @@ MISSING_LABELS = (
 
 EMPTY_INPUT = '"scores" and "actual_classes" are empty - there is nothing to optimize.'
 
+UNDEFINED_SCORES = (
+    '"scores" contains {count} value(s) that are not a number. A threshold cannot be '
+    "placed relative to NaN - every comparison against it is false - so rows with a "
+    "missing or undefined score have to be filled in or dropped before optimizing."
+)
+
 LABEL_MAPPING_TYPE = 'The "labels" option must be a list or a tuple, got {got}.'
 LABEL_MAPPING_LENGTH = 'The "labels" option needs exactly two values, negative label first, got {count}.'
 LABEL_NOT_IN_MAPPING = "Value not found in the mapping - map_labels() cannot map label classes."
@@ -172,6 +178,26 @@ class MissingLabelsError(InvalidInputError):
         """
         self.count = count
         super().__init__(MISSING_LABELS.format(count=count))
+
+
+class UndefinedScoresError(InvalidInputError):
+    """Some scores are NaN, so no threshold can be placed relative to them.
+
+    Distinct from `MissingLabelsError`, which is the same problem on the other column.
+    Before 0.7.1 this went unchecked and each algorithm failed its own way: `exact`
+    returned NaN as though it were an answer - a threshold that classifies everything
+    negative, since every comparison against NaN is false - while `hist` raised a bare
+    `ValueError` from its bin arithmetic.
+    """
+
+    def __init__(self, count: int) -> None:
+        """Record how many are undefined.
+
+        Args:
+            count: number of NaN scores found.
+        """
+        self.count = count
+        super().__init__(UNDEFINED_SCORES.format(count=count))
 
 
 class UnexpectedLabelsError(InvalidInputError):

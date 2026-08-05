@@ -80,9 +80,7 @@ def run(
 
     # The one pass. Every row is read here and never looked at again.
     for score, actual in zip(scores, actual_classes, strict=False):
-        # Every score shares one bin when they are all equal; otherwise the highest would
-        # land one past the end, so it shares the last bin.
-        index = 0 if span == 0 else min(int((score - lowest) / span * bins), bins - 1)
+        index = bin_index(score, lowest, span, bins)
         if actual == POSITIVE_LABEL:
             positives[index] += 1
         else:
@@ -96,6 +94,71 @@ def run(
         print(f"Best threshold {best_threshold} classifies {best_correct}/{len(scores)} correctly.")
 
     return best_threshold
+
+
+def bin_index(score: float, lowest: float, span: float, bins: int) -> int:
+    """Place one score in its bin.
+
+    The single definition of the binning, so the counting pass and the threshold that
+    reports on it cannot drift apart - which is exactly how they used to disagree.
+
+    Args:
+        score: the value to place.
+        lowest: the smallest score the bins cover.
+        span: the distance from the smallest score to the largest.
+        bins: how many bins there are.
+
+    Returns:
+        The bin this score falls in. Every score shares one bin when they are all equal;
+        otherwise the highest would land one past the end, so it shares the last bin.
+    """
+    if span == 0:
+        return 0
+    return min(int((score - lowest) / span * bins), bins - 1)
+
+
+def _boundary_threshold(lowest: float, span: float, boundary: int, bins: int) -> float:
+    """The threshold that separates bin `boundary` from the one below it, exactly.
+
+    The binning floors, so a score sitting on an edge belongs to the bin *above* it, while
+    the prediction rule `score > threshold` sends a score sitting on the threshold to the
+    class *below* it. Returning the edge itself therefore misclassified precisely the
+    samples on that edge, against the counting that chose it (#20).
+
+    Recomputing the edge as `lowest + span * boundary / bins` and stepping one value below
+    it is close but not exact: that expression and the `(score - lowest) / span * bins`
+    used to bin are not inverses in floating point, so a score can bin above the edge and
+    still compare below it. This searches for the boundary with the binning function
+    itself, which cannot disagree with the counting by construction.
+
+    Args:
+        lowest: the smallest score the bins cover.
+        span: the distance from the smallest score to the largest.
+        boundary: the first bin to be predicted positive.
+        bins: how many bins there are in total.
+
+    Returns:
+        The largest value that still bins below `boundary`. Every score in `boundary` or
+        above is strictly greater than it, and every score below is not - which is the
+        split the counting assumed.
+    """
+    if span == 0:
+        # One occupied bin, so the only split at or above the data is the value itself.
+        return lowest
+
+    below, at_or_above = lowest, lowest + span
+    # Invariant: `below` bins under `boundary`, `at_or_above` bins at or over it. Halving
+    # the interval keeps that true, and floats between two neighbours run out quickly.
+    while math.nextafter(below, math.inf) < at_or_above:
+        middle = below + (at_or_above - below) / 2
+        if middle <= below or middle >= at_or_above:
+            break
+        if bin_index(middle, lowest, span, bins) >= boundary:
+            at_or_above = middle
+        else:
+            below = middle
+
+    return below
 
 
 def sweep_bins(
@@ -134,8 +197,9 @@ def sweep_bins(
     total_positive = sum(positives)
 
     # Everything classified positive: the only split that needs a threshold below the data.
+    # `None` stands for it, since it sits below every bin rather than between two.
     best_correct = total_positive
-    best_threshold = math.nextafter(lowest, -math.inf)
+    best_index: int | None = None
 
     negatives_behind = 0
     positives_behind = 0
@@ -153,9 +217,20 @@ def sweep_bins(
 
         if correct > best_correct:
             best_correct = correct
-            best_threshold = lowest + span * (index + 1) / bins
+            best_index = index
 
     if progress_bar:
         print_progress_bar(bins, bins)
+
+    # Resolved once, for the winner only - the search below is far too expensive to run
+    # for every candidate, and only the chosen split needs a threshold at all.
+    if best_index is None:
+        best_threshold = math.nextafter(lowest, -math.inf)
+    elif best_index == bins - 1:
+        # The topmost edge is the largest score itself: nothing exceeds it, which is how
+        # "classify everything as negative" is expressed.
+        best_threshold = lowest + span
+    else:
+        best_threshold = _boundary_threshold(lowest, span, best_index + 1, bins)
 
     return best_threshold, best_correct

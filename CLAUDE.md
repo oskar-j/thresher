@@ -205,6 +205,8 @@ always bind to and dies after sixteen retries.
 
 `algs/histogram/compute.py` bins the scores in one pass and sweeps the bins, so it neither sorts nor keeps the data: 49 KB at a million rows against `exact`'s 107 MB. Its error is bounded by one bin width rather than being statistical, and it is deterministic - the only approximation here that is.
 
+The binning and the threshold it returns have to agree, and 0.7.1 (#20) is what happens when they do not. Binning floors, so a score on an edge belongs to the bin *above*; prediction is `score > threshold`, which sends a score on the threshold to the class *below*. Returning the edge made the sweep report a count the threshold does not achieve. Stepping one float below the edge is *not* enough - `lowest + span * b / bins` and `(score - lowest) / span * bins` are not inverses in floating point - so `_boundary_threshold` searches for the boundary using `bin_index`, the same function the counting pass uses. Do not replace that search with arithmetic on the edge, and do not let a second copy of the binning formula appear.
+
 That property was unreachable until 0.5.3, because `optimize_threshold` called `list()` on both arguments and so allocated `O(n)` before any algorithm ran. It now passes a `Sequence` straight through. If you reintroduce a copy there, `hist` silently loses the only reason to prefer it - `tests/test_histogram.py::TestBoundedMemory` is what catches that.
 
 ### Why `exact` supersedes the rest

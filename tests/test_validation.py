@@ -6,6 +6,7 @@ neither of which told the caller what was wrong.
 
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -295,3 +296,69 @@ class TestAlgorithmParams:
     def test_a_non_mapping_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="must be a mapping"):
             thresher.Thresher(algorithm_params=[("no_of_bins", 64)])
+
+
+class TestUndefinedScores:
+    """Scores that are not numbers, fixed in 0.7.1 (#23).
+
+    Only the labels were ever checked. A NaN score reached the solvers and each failed its
+    own way: `exact` sorted it into place and returned it as the answer - a "threshold"
+    that classifies everything negative, since every comparison against NaN is false -
+    while `hist` raised a bare `ValueError` from its bin arithmetic. One NaN in a
+    `predict_proba` column is an ordinary upstream accident.
+    """
+
+    @pytest.mark.parametrize("algorithm_name", ["exact", "hist", "ls", "grid", "sgrid", "gen", "sgd"])
+    def test_every_algorithm_refuses_a_nan_score(self, algorithm_name: str) -> None:
+        scores = [0.1, float("nan"), 0.6, 0.9] * 30
+        actual_classes = [-1, -1, 1, 1] * 30
+
+        with pytest.raises(ValueError, match="not a number"):
+            thresher.Thresher(algorithm=algorithm_name).optimize_threshold(scores, actual_classes)
+
+    def test_it_no_longer_returns_nan_as_a_threshold(self) -> None:
+        """The failure this replaces: a threshold nothing can ever exceed."""
+        with pytest.raises(ValueError):
+            thresher.Thresher().optimize_threshold([0.1, float("nan"), 0.6, 0.9], [-1, -1, 1, 1])
+
+    def test_the_message_counts_them(self) -> None:
+        with pytest.raises(ValueError, match="2 value"):
+            thresher.Thresher().optimize_threshold([0.1, float("nan"), float("nan"), 0.9], [-1, -1, 1, 1])
+
+    def test_none_is_refused_too(self) -> None:
+        """What a blank looks like in a plain list; it used to die in the sort.
+
+        Annotated away because a `None` score is exactly what the signature forbids - the
+        point is that reaching the solvers with one no longer produces a bare `TypeError`.
+        """
+        scores: list[float] = [0.1, None, 0.6, 0.9]  # type: ignore[list-item]
+
+        with pytest.raises(ValueError, match="not a number"):
+            thresher.Thresher().optimize_threshold(scores, [-1, -1, 1, 1])
+
+    def test_infinities_are_still_allowed(self) -> None:
+        """They order against everything else, so a threshold can be placed near them."""
+        result = thresher.Thresher().optimize_threshold([0.1, float("inf"), 0.6, 0.9], [-1, 1, 1, -1])
+
+        assert result == pytest.approx(0.35)
+
+    def test_a_length_mismatch_is_still_reported_first(self) -> None:
+        # Ragged input is the more basic complaint, and naming it first is more useful.
+        with pytest.raises(ValueError, match="same length"):
+            thresher.Thresher().optimize_threshold([0.1, float("nan"), 0.6], [-1, 1])
+
+    def test_the_cli_reports_it_rather_than_printing_nan(self, tmp_path: Path) -> None:
+        """It used to print `nan` and exit 0, which reads as a successful run."""
+        source = tmp_path / "scores.csv"
+        source.write_text("score,actual_class\n0.1,-1\nnan,-1\n0.6,1\n0.9,1\n")
+
+        completed = subprocess.run(
+            [sys.executable, "-m", "thresher.cli", str(source)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert completed.returncode == 1
+        assert "nan" not in completed.stdout
+        assert "not a number" in completed.stderr
