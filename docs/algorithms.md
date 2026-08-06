@@ -165,17 +165,25 @@ candidate outside the data and returned an edge at chance accuracy.
 ## Evolutionary algorithm
 
 `gen` — evolves a population of candidate thresholds, scoring each against random
-subsamples, discarding the least fit and breeding replacements.
+subsamples, discarding the least fit and breeding replacements. What comes back is the
+fittest agent that was measured, across every generation.
 
 | Parameter | Default | Meaning |
 |---|---|---|
 | `population_size` | 30 | agents per generation |
 | `number_of_generations` | 20 | rounds of selection |
 | `number_of_iterations` | 10 | fitness samples per agent per generation |
-| `sus_factor` | 2 | how many of the least fit are left child-less |
+| `sus_factor` | 2 | how many of the least fit are left child-less. Must be below `population_size` |
 | `stoch_ratio` | 0.02 | fraction of the data each sample reads |
 | `mutation_chance` | 0.05 | probability one agent is nudged per generation |
-| `mutation_factor` | 0.10 | size of that nudge |
+| `mutation_factor` | 0.10 | how far that nudge can move it, either way |
+
+Until 0.7.3 it returned the mean of the population bred after the last round of scoring,
+which nothing had ever evaluated — so a crossover and a mutation reached the answer with
+no selection in front of them. With the nudge firing every generation at
+`mutation_factor=50`, that returned `1.3188` on data spanning `[0, 1]`, at 53% accuracy
+where 90% was available. The nudge was also drawn from `[0, mutation_factor)` and so could
+only ever push a threshold up.
 
 ## Stochastic gradient descent
 

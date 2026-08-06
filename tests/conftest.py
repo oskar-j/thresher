@@ -19,6 +19,28 @@ Dataset = tuple[list[float], list[int]]
 DatasetFactory = Callable[..., Dataset]
 
 
+@pytest.fixture(autouse=True)
+def _fixed_random_state() -> None:
+    """Start every test from the same global random state.
+
+    Four solvers sample through the `random` module, so a test that asserts an outcome
+    from one of them was really asserting something about wherever the module-level
+    generator happened to be by the time that test ran - which is set by every test
+    before it. Tests passed or failed on their position in the run.
+
+    That is not theoretical. `TestScoresOutsideTheUnitInterval` demands exact accuracy
+    from `sgrid`, which scores each candidate against 5 of the 100 rows by default: 43 of
+    200 starting states fail it. It has been passing on the alignment the suite happened
+    to have, and 0.7.3 - which changed how many values the genetic solver draws, and
+    nothing else about `sgrid` - moved that alignment and turned it red.
+
+    Seeding here does not make a stochastic solver deterministic in production. It makes
+    each test reproducible and independent of the ones before it, so a failure means the
+    code changed rather than that the order did.
+    """
+    random.seed(20260805)
+
+
 @pytest.fixture(scope="session")
 def medium_dataset() -> Dataset:
     """The real-world anonymised sample, ~3k rows, whose optimum sits around 0.5."""

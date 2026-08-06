@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-08-05
+
+Three defects in how the evolutionary solver turns one generation into the next, and into
+an answer. On the fixture used to measure them, mean error against `exact` halved.
+
+### Fixed
+
+- **The answer is an agent that was actually measured** ([#31]). Each generation scored
+  its population, selected from it, then bred a replacement — and after the *last*
+  generation that replacement was returned without ever being scored. One crossover and
+  one mutation therefore reached the answer with no selection in front of them. The
+  fittest agent measured across every generation is returned instead, the same rule the
+  `sgd` walk already follows in returning its best point rather than its last.
+
+  It shows up worst when the mutation is loud. With `mutation_chance=1.0`:
+
+  | `mutation_factor` | before | now |
+  |---|---|---|
+  | 0.10 | 0.5078 | inside the data |
+  | 5.0 | 0.5776 | inside the data |
+  | 50.0 | **1.3188** — outside a `[0, 1]` dataset, at 53% accuracy where 90% was available | inside the data, within 0.036 of the achievable accuracy |
+
+  Averaging was also measured against returning the fittest, since the old docstring
+  claimed the mean was deliberate noise reduction: over 40 seeds the mean of the final
+  *evaluated* survivors gives 0.0151 mean error against 0.0076 for the fittest. Averaging
+  an unconverged population drags the answer toward the middle of its spread, which is a
+  cost rather than a benefit.
+
+- **Mutation moves a threshold either way** ([#31]). The nudge was
+  `mutation_factor * random.random()`, drawn from `[0, mutation_factor)` and so never
+  negative — a ratchet rather than a mutation. Measured against `exact` over 40 seeds of
+  4,000 rows, the returned threshold sat `+0.0061` above the optimum with mutation off,
+  `+0.0069` at the default chance and `+0.0120` at `0.5`: the more often it fired, the
+  further up it pushed. It is now symmetric, and the bias at every rate is within
+  `±0.002`.
+
+- **`sus_factor` is validated instead of being fed to a slice** ([#31]).
+  `population_size - sus_factor` was used directly as a slice bound, and a slice takes a
+  negative bound to mean "from the far end". Against the default population of 30:
+
+  | `sus_factor` | before | now |
+  |---|---|---|
+  | 30 | bare stdlib `ValueError: Sample larger than population` — not a `ThresherError` | `ConfigurationError` |
+  | 35 | **silently kept 25 survivors** — asked to cull 35, culled 5 | `ConfigurationError` |
+  | 59 | silently kept 1 | `ConfigurationError` |
+  | 61 | bare stdlib `ValueError` again | `ConfigurationError` |
+
+  `population_size`, `number_of_generations` and `number_of_iterations` are checked with
+  it: each must be a whole number of at least 1, since `number_of_iterations=0` made
+  fitness the mean of no samples and `population_size=0` left nothing to evolve. All are
+  checked before the simulation starts rather than discovered part-way through it.
+
+### Changed
+
+- A generation is now bred from the previous one's survivors and *then* scored, rather
+  than scored and then bred. The two orders run the same operations in the same sequence,
+  but only one of them leaves no population unmeasured at the end - which was the whole
+  defect above, and is now a property of the loop's shape rather than a special case in it.
+- Every test now starts from the same global random state, set by an autouse fixture in
+  `tests/conftest.py`. Four solvers sample through the `random` module, so a test
+  asserting an outcome from one of them was really asserting something about wherever the
+  generator had been left by the tests before it — they passed or failed on their
+  position in the run. This release changed how many values the genetic solver draws and
+  nothing else about `sgrid`, and that alone turned an `sgrid` assertion red.
+- `TestScoresOutsideTheUnitInterval` runs its sampling solvers at `stoch_ratio=1.0`. Those
+  tests ask where a solver *looks* — whether its candidates are laid over the data or over
+  a hardcoded `[0, 1]` — and `sgrid` was answering through 5 of 100 rows, or a single row
+  on the three-row inputs, so the assertions were being decided by the draw as much as by
+  the grid. It missed exact accuracy for 43 of 200 starting random states; it now misses
+  for none of them, and the property the test names is what decides it.
+
+[#31]: https://github.com/oskar-j/thresher/issues/31
+
 ## [0.7.2] - 2026-08-05
 
 numpy and pandas input stops being second-class: it is no longer copied, and no longer
@@ -161,6 +234,7 @@ never have produced one.
 
   ```python
   from thresher import Thresher
+
 
   def main():
       Thresher(backend="mp").optimize_threshold(scores, actual_classes)
@@ -1081,7 +1155,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.7.3...HEAD
+[0.7.3]: https://github.com/oskar-j/thresher/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/oskar-j/thresher/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/oskar-j/thresher/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/oskar-j/thresher/compare/v0.6.4...v0.7.0

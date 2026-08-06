@@ -284,14 +284,22 @@ from `0.05` to `0.5` took the mean error from `0.0394` to `0.0035` and the worst
 
 This is a simulation approach which uses an evolutionary algorithm. It works by simulating multiple generations of a "population" of candidate solutions. During every iteration of a single generation, algorithm stochasticly evaluates the candidate solution. After the end of a single generation, we remove the from the population least fit agents (solutions), and do the _crossover_ between the left solitions to produce new "offspring" candidate solutions. Moreover, they may mutate to provide additional random chance.
 
+The answer is the fittest agent that was actually measured, over every generation — not
+the mean of the final population, which is bred *after* the last round of scoring and so
+never evaluated at all. That is what it returned until 0.7.3, which let one crossover and
+one mutation through with no selection in front of them.
+
 List of parameters to customize:
 * `population_size` (default: 30) - number of agents in the simulation
 * `number_of_generations` (default: 20) - number of generations
 * `number_of_iterations` (default: 10) - number of iterations per a generation
-* `sus_factor` (default: 2) - how many least-fit agents should be childless at the end of generation
+* `sus_factor` (default: 2) - how many least-fit agents should be childless at the end of generation. Must be smaller than `population_size`, since culling all of it leaves nothing to cross over
 * `stoch_ratio` (default: 0.02) - percentage of data to evaluate fit of a single agent per iteration
 * `mutation_chance` (default: 0.05) - probability that one agent per generation is nudged at random
-* `mutation_factor` (default: 0.10) - how far such a nudge can move that agent's threshold
+* `mutation_factor` (default: 0.10) - how far such a nudge can move that agent's threshold, in either direction
+
+The four counts must each be a whole number of at least 1, and are checked before the
+simulation starts rather than discovered part-way through it.
 
 ### Grid search
 

@@ -28,13 +28,13 @@ tests run on every CI matrix job and count towards coverage; without them
 pytest, runnable from anywhere in the repo (0.3.0 moved the fixtures to paths resolved relative to `tests/conftest.py`; before that the suite only worked from inside the old `thresher/tests/`):
 
 ```bash
-uv run pytest                                   # 685 tests
+uv run pytest                                   # 714 tests
 uv run pytest tests/test_validation.py -v       # one module
 uv run pytest -k "sgd and separable"            # by expression
 uv run --isolated --python 3.14 --group dev pytest   # a specific interpreter
 ```
 
-Several solvers are randomized internally, so returned thresholds vary between runs and the assertions check a band rather than an exact value. Outcomes are nonetheless stable: if a stochastic test starts failing intermittently, suspect a fitness/selection regression rather than a too-tight assertion.
+Several solvers are randomized internally, so returned thresholds vary between runs and the assertions check a band rather than an exact value. Since 0.7.3 an autouse fixture seeds `random` before every test, so the suite itself is reproducible and order-independent - see "Stochastic tests are seeded" below for why that was needed and for what it does *not* fix. A stochastic test that starts failing is therefore a real change in behaviour, not the weather; suspect a fitness/selection regression rather than a too-tight assertion.
 
 ### Documentation
 
@@ -68,6 +68,8 @@ uv run ruff check . --fix
 uv run ruff format .
 uv run mypy                          # strict, over src/ and tests/
 ```
+
+**`uv run ruff format .` at the repo root also rewrites Markdown.** Ruff formats fenced ```python blocks inside `.md`, so a bare `ruff format .` restyles the examples in `README.md`, `CHANGELOG.md` and `docs/*.md` - collapsing the deliberately multi-line `Thresher(...)` example in the README onto one line, among other things. The pre-commit `ruff-format` hook only sees Python files, so **CI never asks for this** and it arrives as unrelated churn in a diff. Scope the command (`ruff format src/ tests/`) or use `make check`.
 
 **`--all-files` means all *tracked* files.** A file that has not been `git add`ed yet is skipped in silence, so the run reports success while never having looked at it. CI checks out the committed tree, sees the file, and fails - which is where the discrepancy surfaces, after the push. This caught out two releases in a row before being fixed properly in 0.4.1.
 
@@ -227,6 +229,21 @@ Three solvers used to ask `if not scores:`, which raises for an array of more th
 `algs/exact/compute.py` sorts once and sweeps with running class counts, so each candidate threshold costs O(1) instead of O(n) — O(n log n) overall against linear search's O(n²), and 1,358× faster at 16,000 rows. It is exact, so it has no parameters; there is no accuracy to trade for speed. The other four algorithms predate it and are kept selectable, but nothing should route to them by default.
 
 Two subtleties in that file worth not "simplifying" away. Runs of equal scores are stepped over whole, because a threshold cannot sit inside one — the tie case Fawcett raises for ROC curves. And the final candidate is `max(scores)` itself, which expresses "classify everything as negative"; linear search has no way to represent that, which is why `exact` is very occasionally *more* accurate rather than merely equal.
+
+### The genetic solver returns what it measured
+
+`algs/genetic/compute.py` evaluates a population, selects from it, breeds a replacement, and repeats. 0.7.3 (#31) fixed three things about that loop, all of which look like details and are not:
+
+- **The answer is the fittest agent measured, across every generation** - not the mean of the final population. That population is bred *after* the last round of scoring, so nothing ever evaluated it, and one crossover plus one mutation reached the answer with no selection in front of them. At `mutation_chance=1.0, mutation_factor=50` it returned 1.3188 on a `[0, 1]` dataset. This is the same rule `sgd_solver` follows in returning its best point rather than its last, and for the same reason: fitness is sampled, so a later generation can be worse than one already seen. Averaging was measured against it rather than assumed away - mean-of-evaluated-survivors gives 0.0151 mean error where the fittest gives 0.0076.
+- **The final generation does not breed.** Follows from the above: there is nothing left to score the offspring against.
+- **Mutation is symmetric.** `mutation_factor * random.random()` is drawn from `[0, mutation_factor)` and so only ever raises a trait. The bias against `exact` climbed with the mutation rate - `+0.0061` off, `+0.0120` at 0.5. `_mutate` exists as a function so that direction is unit-testable rather than only statistically visible.
+- **`sus_factor` is validated, not fed to a slice.** `population_size - sus_factor` went straight into `[0:n]`, and a negative bound counts from the far end - so culling 35 of 30 agents silently kept 25. Landing on exactly 0 instead reached `random.sample` and raised a bare stdlib `ValueError`, outside `ThresherError` entirely. `_survivor_count` and `_positive_count` check all four counts before the simulation starts.
+
+### Stochastic tests are seeded, once, in `conftest.py`
+
+An autouse fixture seeds `random` before every test. Four solvers sample through that module, so without it a test asserting an outcome from one of them is really asserting something about wherever the generator was left by the tests before it - order-dependent, and silently so. 0.7.3 changed how many values the genetic solver draws and nothing else about `sgrid`, and that alone turned an unrelated `sgrid` assertion red.
+
+Seeding makes failures reproducible; it does not make a weak assertion strong. `TestScoresOutsideTheUnitInterval` demanded exact accuracy from `sgrid` scoring each candidate against 5 of 100 rows, and failed for 43 of 200 starting states - seeding would only have picked a lucky one. Those tests pass `stoch_ratio=1.0` now, because what they are about is where the grid is laid, not how well a 5-row subsample represents 100 rows. If you find yourself choosing a seed to make a stochastic test pass, the assertion is the problem.
 
 ### Solver signature convention
 
