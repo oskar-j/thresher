@@ -23,10 +23,13 @@ def main() -> None:
     case_medium_scores = medium_data["pred"]
     case_medium_labels = medium_data["actual"]
 
-    t = thresher.Thresher(progress_bar=True, verbose=True)
+    # `verbosity` decides how much of the run is reported. 'info' is the shape of it -
+    # the algorithm, the data, the answer - and 'debug' is every step. The bar is not
+    # drawn at 'debug': both go to stderr, and the log wins.
+    t = thresher.Thresher(progress_bar=True, verbosity="info")
     print(f"Optimization result: {t.optimize_threshold(case_medium_scores, case_medium_labels)}")
 
-    t = thresher.Thresher(algorithm="gen", progress_bar=True, verbose=True)
+    t = thresher.Thresher(algorithm="gen", progress_bar=True, verbosity="info")
     print(f"Alternative optimization result: {t.optimize_threshold(case_medium_scores, case_medium_labels)}")
 
     print("Done")

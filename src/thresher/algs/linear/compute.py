@@ -7,10 +7,12 @@ by `exact`, which returns the same answer, or a marginally better one, in O(n lo
 
 from collections.abc import Sequence
 
+from thresher import log
 from thresher.backends import Backend, LocalBackend, MultiprocessingBackend
 from thresher.backends.mp_backend import resolve_worker_count
 from thresher.exceptions import InsufficientDataError
-from thresher.utils import pairwise, print_progress_bar
+from thresher.progress import make_progress
+from thresher.utils import pairwise
 
 #: The one `algorithm_params` key linear search reads. It is consulted by
 #: `run_computations` rather than here - it selects between `run` and `run_parallel`
@@ -19,7 +21,7 @@ from thresher.utils import pairwise, print_progress_bar
 known_params = frozenset({"n_jobs"})
 
 
-def run_parallel(scores: Sequence[float], actual_classes: Sequence[int], verbose: bool, n_jobs: int) -> float:
+def run_parallel(scores: Sequence[float], actual_classes: Sequence[int], n_jobs: int) -> float:
     """Run the linear search across several processes.
 
     Selected by `run_computations` when `allow_parallel` is set and `n_jobs != 1`.
@@ -35,7 +37,6 @@ def run_parallel(scores: Sequence[float], actual_classes: Sequence[int], verbose
     Args:
         scores: the values being split.
         actual_classes: the matching ground-truth classes, as -1 and 1.
-        verbose: print progress information.
         n_jobs: number of worker processes, or -1 for every available processor bar one.
 
     Returns:
@@ -48,19 +49,20 @@ def run_parallel(scores: Sequence[float], actual_classes: Sequence[int], verbose
     """
     backend = MultiprocessingBackend(num_workers=n_jobs)
 
-    if verbose:
-        print(
-            f"Doing linear search with {len(scores)} scores, "
-            f"running in parallel over {resolve_worker_count(n_jobs)} processes."
-        )
+    log.info(
+        "Doing linear search with {} scores, running in parallel over {} processes.",
+        len(scores),
+        resolve_worker_count(n_jobs),
+    )
 
-    return run(scores, actual_classes, verbose, progress_bar=False, backend=backend)
+    # No bar: the work happens in other processes, and there is no single loop here to
+    # step one - see the note in `thresher.progress`.
+    return run(scores, actual_classes, progress_bar=False, backend=backend)
 
 
 def run(
     scores: Sequence[float],
     actual_classes: Sequence[int],
-    verbose: bool,
     progress_bar: bool,
     backend: Backend | None = None,
 ) -> float:
@@ -72,8 +74,7 @@ def run(
     Args:
         scores: the values being split.
         actual_classes: the matching ground-truth classes, as -1 and 1.
-        verbose: print progress information.
-        progress_bar: draw a progress bar on stdout. Since 0.4.2 the candidates are scored
+        progress_bar: draw a progress bar on stderr. Since 0.4.2 the candidates are scored
             in one batch, so this brackets the work rather than advancing through it.
         backend: where the counting happens. Defaults to in-process.
 
@@ -87,11 +88,10 @@ def run(
     """
     batch_size = len(scores)
 
-    if verbose:
-        print(
-            f"Doing linear search with {batch_size} iterations. "
-            f"It can take some time, depending on the data volume."
-        )
+    log.info(
+        "Doing linear search with {} iterations. It can take some time, depending on the data volume.",
+        batch_size,
+    )
 
     # Every midpoint between adjacent sorted scores, duplicates included, exactly as
     # before - scoring them is now one batched call instead of a nested loop.
@@ -102,13 +102,11 @@ def run(
         # threshold to evaluate at all.
         raise InsufficientDataError("At least two scores are needed to evaluate a threshold.")
 
-    if progress_bar:
-        print_progress_bar(0, batch_size)
-
-    tallies = (backend or LocalBackend()).tally_candidates(candidates, scores, actual_classes)
-
-    if progress_bar:
-        print_progress_bar(batch_size, batch_size)
+    # One batched call, so the bar brackets it rather than stepping through it: 0% while
+    # the counting runs, 100% when it returns.
+    with make_progress(batch_size, "Linear search", enabled=progress_bar) as bar:
+        bar.update(0)
+        tallies = (backend or LocalBackend()).tally_candidates(candidates, scores, actual_classes)
 
     # max() over indices returns the first maximum, keeping the original tie-breaking.
     return candidates[max(range(len(tallies)), key=tallies.__getitem__)]

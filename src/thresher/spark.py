@@ -31,10 +31,9 @@ PySpark is an optional dependency: `pip install 'thresher-py[spark]'`. It also n
 which pip cannot install for you.
 """
 
-import logging
 from typing import TYPE_CHECKING, Any
 
-from thresher import algorithm
+from thresher import algorithm, log
 from thresher.algs.exact.compute import sweep_class_counts
 from thresher.algs.histogram.compute import no_of_bins_default, sweep_bins
 from thresher.dispatch import validate_algorithm_params
@@ -52,8 +51,6 @@ from thresher.utils import NEGATIVE_LABEL, POSITIVE_LABEL, get_or_default
 
 if TYPE_CHECKING:  # pragma: no cover - imported for annotations only
     from pyspark.sql import DataFrame
-
-logger = logging.getLogger(__name__)
 
 #: The algorithms whose work is an aggregation, and so can run in the cluster unchanged.
 SUPPORTED_ALGORITHMS = ("hist", "exact")
@@ -139,6 +136,7 @@ class SparkThresher:
         algorithm_params: dict[str, Any] | None = None,
         labels: tuple[Any, Any] | None = None,
         verbose: bool = False,
+        verbosity: str | None = None,
     ) -> None:
         """Configure the search.
 
@@ -151,12 +149,21 @@ class SparkThresher:
                 read raises `ConfigurationError` rather than being ignored.
             labels: your two class labels, negative first, if they are not -1 and 1 -
                 for example `(0, 1)`.
-            verbose: log what is being aggregated.
+            verbose: log what is being aggregated. `verbose=True` means
+                `verbosity='debug'`, the same as it does on `Thresher`.
+            verbosity: how much this instance reports - `'debug'`, `'info'`, `'warning'`
+                (the default), `'error'` or `'critical'`. Applies for the duration of each
+                `optimize_threshold` call.
+
+        Note:
+            No progress bar is offered, deliberately. The counting happens on executors,
+            where there is nobody watching a terminal, and the driver's share of the work
+            is a sweep over a few thousand bins - see `thresher.progress`.
 
         Raises:
             UnknownAlgorithmError: if the name matches no algorithm at all.
             ConfigurationError: if it names an algorithm that cannot run as an
-                aggregation. Both are `ValueError`.
+                aggregation, or if `verbosity` names no known level. Both are `ValueError`.
             BackendDependencyError: if PySpark is not installed.
         """
         _require_pyspark()
@@ -173,7 +180,7 @@ class SparkThresher:
         # would otherwise leave the default in place across an entire cluster run.
         validate_algorithm_params(resolved, self.algorithm_params)
         self.labels = labels
-        self.verbose = verbose
+        self.verbosity = log.resolve_verbosity(verbosity, verbose)
 
     def optimize_threshold(
         self, df: "DataFrame", score_col: str = "score", label_col: str = "label"
@@ -206,6 +213,23 @@ class SparkThresher:
             returned a plausible threshold computed from data the in-memory path would have
             refused outright.
         """
+        with log.verbosity(self.verbosity):
+            return self._optimize_threshold(df, score_col, label_col)
+
+    def _optimize_threshold(self, df: "DataFrame", score_col: str, label_col: str) -> float:
+        """Aggregate, refuse what cannot be swept, and sweep the rest.
+
+        Split from `optimize_threshold` so that the level this instance was built with
+        covers the whole run, including the refusals, without indenting all of it.
+
+        Args:
+            df: the DataFrame holding the scores and their true classes.
+            score_col: name of the column holding the scores.
+            label_col: name of the column holding the ground-truth classes.
+
+        Returns:
+            The threshold.
+        """
         functions = _require_pyspark()
 
         negative_label, positive_label = self.labels or (NEGATIVE_LABEL, POSITIVE_LABEL)
@@ -236,14 +260,13 @@ class SparkThresher:
         if positives == 0 or negatives == 0:
             raise SingleClassError(positive_label if positives else negative_label)
 
-        if self.verbose:
-            logger.info(
-                "Aggregating %s rows over [%s, %s] with %s.",
-                f"{summary['rows']:,}",
-                summary["lowest"],
-                summary["highest"],
-                self.algorithm.full_name,
-            )
+        log.info(
+            "Aggregating {} rows over [{}, {}] with {}.",
+            f"{summary['rows']:,}",
+            summary["lowest"],
+            summary["highest"],
+            self.algorithm.full_name,
+        )
 
         if self.algorithm.id == "hist":
             return self._binned(df, score_col, is_positive, summary)
@@ -383,8 +406,8 @@ class SparkThresher:
         )
 
         if len(rows) > DISTINCT_SCORE_WARNING:
-            logger.warning(
-                "'exact' collected %s distinct scores to the driver. The 'hist' algorithm "
+            log.warning(
+                "'exact' collected {} distinct scores to the driver. The 'hist' algorithm "
                 "answers the same question from a fixed number of bins, whatever the input.",
                 f"{len(rows):,}",
             )

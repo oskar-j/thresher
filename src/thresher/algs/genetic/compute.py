@@ -13,10 +13,12 @@ from typing import Any
 
 import numpy as np
 
+from thresher import log
 from thresher.algs.common.meta_optimizer import calculate_range_mean
 from thresher.algs.common.stochastic import stochastic_process
 from thresher.exceptions import ConfigurationError
-from thresher.utils import get_or_default, print_progress_bar
+from thresher.progress import make_progress
+from thresher.utils import get_or_default
 
 population_size_default = 30
 number_of_generations_default = 20
@@ -158,7 +160,6 @@ def _mutate(population: list[Agent], mutation_factor: float) -> None:
 def run(
     scores: Sequence[float],
     actual_classes: Sequence[int],
-    verbose: bool,
     progress_bar: bool,
     alg_options: Mapping[str, Any],
 ) -> float:
@@ -171,9 +172,10 @@ def run(
     Args:
         scores: the values being split.
         actual_classes: the matching ground-truth classes, as -1 and 1.
-        verbose: print the population after each generation. Enabling this disables the
-            progress bar, since the two would fight over the terminal.
-        progress_bar: draw a progress bar on stdout, one step per generation.
+        progress_bar: draw a progress bar on stderr, one step per generation. It is not
+            drawn while the log is at DEBUG, which is where the per-generation detail
+            goes: the two write to the same stream. That rule used to live here and now
+            applies to every solver - see `thresher.progress`.
         alg_options: recognised keys, each falling back to its module-level default:
             `population_size` (30) agents per generation; `number_of_generations` (20)
             rounds of selection; `number_of_iterations` (10) fitness samples drawn per
@@ -195,10 +197,6 @@ def run(
         ConfigurationError: if any of the four counts is below 1, or if `sus_factor` would
             leave no agent to breed from. It is a `ValueError`.
     """
-    if verbose and progress_bar:
-        print("Warning! Enabling verbosity automatically disables a progress bar.")
-        progress_bar = False
-
     # Every size the simulation runs on is checked before any of it starts, so a setting
     # that cannot work is reported as such rather than as whatever the arithmetic made of
     # it several seconds in.
@@ -252,51 +250,50 @@ def run(
     # unmeasured crossover and mutation used to reach the answer.
     survivors: list[Agent] = []
 
-    for generation_no in range(number_of_generations):
-        if verbose:
-            print(f"Running generation no {generation_no}")
+    log.info("Evolving {} agents over {} generations.", population_size, number_of_generations)
 
-        if progress_bar:
-            print_progress_bar(generation_no, number_of_generations)
+    with make_progress(number_of_generations, "Evolving", enabled=progress_bar) as bar:
+        for generation_no in range(number_of_generations):
+            log.debug("Running generation no {}", generation_no)
+            bar.update(generation_no)
 
-        if survivors:
-            # do crossover
-            population = []
-            for i in range(population_size):
-                left = random.sample(survivors, 1)[0].trait
-                right = random.sample(survivors, 1)[0].trait
-                if left > right:
-                    left, right = right, left
-                new_trait = left + ((right - left) * random.random())
-                population.append(Agent(id=f"agent_{i}", trait=new_trait))
+            if survivors:
+                # do crossover
+                population = []
+                for i in range(population_size):
+                    left = random.sample(survivors, 1)[0].trait
+                    right = random.sample(survivors, 1)[0].trait
+                    if left > right:
+                        left, right = right, left
+                    new_trait = left + ((right - left) * random.random())
+                    population.append(Agent(id=f"agent_{i}", trait=new_trait))
 
-            if random.random() < get_or_default(alg_options, "mutation_chance", mutation_chance_default):
-                _mutate(population, mutation_factor)
+                if random.random() < get_or_default(alg_options, "mutation_chance", mutation_chance_default):
+                    _mutate(population, mutation_factor)
 
-            if verbose:
-                print(f"Population for gen: {generation_no} - {[_.trait for _ in population]}")
+                # Asked before it is built: this line lists every agent's trait, so at any
+                # other level it would be a list comprehension over the whole population,
+                # formatted and thrown away, once per generation.
+                if log.is_enabled_for("debug"):
+                    log.debug("Population for gen: {} - {}", generation_no, [_.trait for _ in population])
 
-        for _iteration_no in range(number_of_iterations):
+            for _iteration_no in range(number_of_iterations):
+                for agent in population:
+                    # for every iteration, get a stochastic fitness score
+                    agent.samples.append(
+                        stochastic_process(agent.trait, scores, actual_classes, random_factor=stoch_ratio)
+                    )
+
+            # calculate fitness score - the mean mis-classification ratio over this
+            # generation's iterations, so that lower is fitter
             for agent in population:
-                # for every iteration, get a stochastic fitness score
-                agent.samples.append(
-                    stochastic_process(agent.trait, scores, actual_classes, random_factor=stoch_ratio)
-                )
+                agent.fitness = float(np.mean(agent.samples))
+                if agent.fitness < best_fitness:
+                    best_trait, best_fitness = agent.trait, agent.fitness
 
-        # calculate fitness score - the mean mis-classification ratio over this
-        # generation's iterations, so that lower is fitter
-        for agent in population:
-            agent.fitness = float(np.mean(agent.samples))
-            if agent.fitness < best_fitness:
-                best_trait, best_fitness = agent.trait, agent.fitness
+            # select most fit (SUS)
+            survivors = sorted(population, key=lambda a: a.fitness)[0:survivor_count]
 
-        # select most fit (SUS)
-        survivors = sorted(population, key=lambda a: a.fitness)[0:survivor_count]
-
-    if progress_bar:
-        print_progress_bar(number_of_generations, number_of_generations)
-
-    if verbose:
-        print(f"Fittest agent measured: {best_trait} at a mis-classification ratio of {best_fitness}")
+    log.info("Fittest agent measured: {} at a mis-classification ratio of {}", best_trait, best_fitness)
 
     return best_trait

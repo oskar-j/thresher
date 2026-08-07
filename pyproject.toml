@@ -1,6 +1,6 @@
 [project]
 name = "thresher-py"
-version = "0.7.3"
+version = "0.8.0"
 description = "Find threshold for fine-tuning output from predict_proba"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,7 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
-dependencies = ["numpy", "pandas", "click>=8.0"]
+dependencies = ["numpy", "pandas", "click>=8.0", "loguru>=0.7.3"]
 
 [project.scripts]
 thresher = "thresher.cli:main"
@@ -32,6 +32,10 @@ ray = ["ray>=2.9"]
 # PySpark ships as an sdist carrying the Spark distribution, so installing it is slow and
 # large. It also needs a JVM on the machine, which pip cannot provide.
 spark = ["pyspark>=3.4"]
+# tqdm draws a better progress bar than the one this package carries, and is used
+# automatically when it is importable. Optional because the built-in bar is a fallback
+# rather than a stub: nothing is lost without it, so nobody has to install it.
+progress = ["tqdm>=4.66"]
 
 [project.urls]
 # GitHub Pages, because PyPI can verify it. A package uploaded through Trusted Publishing
@@ -58,6 +62,10 @@ dev = [
     # Ray installs, so they are exercised for real there.
     "ray>=2.9; sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
     "pyspark>=3.4",
+    # The progress extra. Installed here so the suite exercises the tqdm path as well as
+    # the built-in one - `tests/test_progress.py` hides the import to reach the fallback.
+    "tqdm>=4.66",
+    "types-tqdm",
 ]
 # Kept out of `dev` because the docs toolchain is large and only the docs build needs it.
 docs = [

@@ -19,9 +19,11 @@ from typing import Any
 
 import numpy as np
 
+from thresher import log
 from thresher.backends import Backend, LocalBackend
 from thresher.exceptions import InsufficientDataError
-from thresher.utils import get_or_default, print_progress_bar
+from thresher.progress import make_progress
+from thresher.utils import get_or_default
 
 no_of_decimal_places_default = 2
 stoch_ratio_default = 0.05
@@ -88,7 +90,6 @@ def _build_grid(scores: Sequence[float], batch_size: int) -> list[float]:
 def run_stoch(
     scores: Sequence[float],
     actual_classes: Sequence[int],
-    verbose: bool,
     progress_bar: bool,
     alg_options: Mapping[str, Any],
 ) -> float:
@@ -100,20 +101,18 @@ def run_stoch(
     Args:
         scores: the values being split.
         actual_classes: the matching ground-truth classes, as -1 and 1.
-        verbose: print progress information.
-        progress_bar: draw a progress bar on stdout.
+        progress_bar: draw a progress bar on stderr.
         alg_options: may hold `no_of_decimal_places`, `stoch_ratio` and `reshuffle`.
 
     Returns:
         The grid point with the highest measured accuracy.
     """
-    return run(scores, actual_classes, verbose, progress_bar, alg_options, True)
+    return run(scores, actual_classes, progress_bar, alg_options, True)
 
 
 def run(
     scores: Sequence[float],
     actual_classes: Sequence[int],
-    verbose: bool,
     progress_bar: bool,
     alg_options: Mapping[str, Any],
     stochastic: bool = False,
@@ -124,8 +123,7 @@ def run(
     Args:
         scores: the values being split.
         actual_classes: the matching ground-truth classes, as -1 and 1.
-        verbose: print progress information.
-        progress_bar: draw a progress bar on stdout.
+        progress_bar: draw a progress bar on stderr.
         alg_options: recognised keys, each falling back to its module-level default:
             `no_of_decimal_places` (2) sets the grid resolution - the grid holds
             `10**places + 1` evenly spaced points, so 2 gives 101 of them, spanning the
@@ -167,18 +165,20 @@ def run(
     candidates = _build_grid(scores, batch_size)
     total = len(candidates)
 
-    if verbose:
-        print(f"Evaluating {total} solutions over [{min(scores)}, {max(scores)}]. Please wait for results.")
+    log.info(
+        "Evaluating {} solutions over [{}, {}]. Please wait for results.",
+        total,
+        min(scores),
+        max(scores),
+    )
 
     if not stochastic:
         # The exhaustive path is exactly "score these candidates, keep the best", which is
         # what a backend parallelises. max() over indices takes the first maximum, which
         # is the tie-breaking the loop below also used.
-        if progress_bar:
-            print_progress_bar(0, total)
-        tallies = (backend or LocalBackend()).tally_candidates(candidates, scores, actual_classes)
-        if progress_bar:
-            print_progress_bar(total, total)
+        with make_progress(total, "Grid search", enabled=progress_bar) as bar:
+            bar.update(0)
+            tallies = (backend or LocalBackend()).tally_candidates(candidates, scores, actual_classes)
         return candidates[max(range(len(tallies)), key=tallies.__getitem__)]
 
     # Drawn once when every candidate is to be judged against the same subsample; left
@@ -187,32 +187,29 @@ def run(
         _get_random_projection(scores, actual_classes, stoch_ratio) if stochastic and not reshuffle else []
     )
 
-    for iteration, single_point in enumerate(candidates, start=1):
-        if progress_bar:
-            print_progress_bar(iteration, total)
+    with make_progress(total, "Stochastic grid", enabled=progress_bar) as bar:
+        for iteration, single_point in enumerate(candidates, start=1):
+            bar.update(iteration)
 
-        count_correct, count_incorrect = 0, 0
+            count_correct, count_incorrect = 0, 0
 
-        projection: Iterable[tuple[float, int]]
-        if reshuffle:
-            projection = _get_random_projection(scores, actual_classes, stoch_ratio)
-        else:
-            projection = one_time_projection
-
-        for score, actual in projection:
-            predicted = 1 if score > single_point else -1
-            if predicted == actual:
-                count_correct += 1
+            projection: Iterable[tuple[float, int]]
+            if reshuffle:
+                projection = _get_random_projection(scores, actual_classes, stoch_ratio)
             else:
-                count_incorrect += 1
+                projection = one_time_projection
 
-        accuracy = count_correct / (count_correct + count_incorrect)
+            for score, actual in projection:
+                predicted = 1 if score > single_point else -1
+                if predicted == actual:
+                    count_correct += 1
+                else:
+                    count_incorrect += 1
 
-        if accuracy > best_accuracy:
-            best_threshold, best_accuracy = float(single_point), accuracy
+            accuracy = count_correct / (count_correct + count_incorrect)
 
-    if progress_bar:
-        print_progress_bar(total, total)
+            if accuracy > best_accuracy:
+                best_threshold, best_accuracy = float(single_point), accuracy
 
     if best_threshold is None:
         raise InsufficientDataError("The grid produced no candidate thresholds to evaluate.")

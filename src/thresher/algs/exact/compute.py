@@ -28,9 +28,10 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from thresher import log
 from thresher.backends import Backend, LocalBackend
 from thresher.exceptions import InsufficientDataError
-from thresher.utils import print_progress_bar
+from thresher.progress import make_progress
 
 #: This solver is exact, so it has no parameters: there is no accuracy to trade for
 #: speed. Any `algorithm_params` key is therefore a mistake, and is reported as one -
@@ -41,7 +42,6 @@ known_params: frozenset[str] = frozenset()
 def run(
     scores: Sequence[float],
     actual_classes: Sequence[int],
-    verbose: bool,
     progress_bar: bool,
     alg_options: Mapping[str, Any],
     backend: Backend | None = None,
@@ -51,8 +51,7 @@ def run(
     Args:
         scores: the values being split.
         actual_classes: the matching ground-truth classes, as -1 and 1.
-        verbose: print progress information.
-        progress_bar: draw a progress bar on stdout.
+        progress_bar: draw a progress bar on stderr.
         alg_options: accepted for signature compatibility with the other solvers. This
             algorithm has nothing to tune - it is exact, so there is no accuracy to trade
             against speed.
@@ -84,13 +83,11 @@ def run(
     # themselves - which is precisely what makes it distributable.
     counts = (backend or LocalBackend()).class_counts_by_score(scores, actual_classes)
 
-    if verbose:
-        print(f"Sweeping {len(counts)} distinct scores from {len(scores)} samples for the exact optimum.")
+    log.info("Sweeping {} distinct scores from {} samples for the exact optimum.", len(counts), len(scores))
 
     best_threshold, best_correct = sweep_class_counts(counts, progress_bar=progress_bar)
 
-    if verbose:
-        print(f"Best threshold {best_threshold} classifies {best_correct}/{len(scores)} correctly.")
+    log.info("Best threshold {} classifies {}/{} correctly.", best_threshold, best_correct, len(scores))
 
     return best_threshold
 
@@ -107,7 +104,7 @@ def sweep_class_counts(
 
     Args:
         counts: distinct score mapped to its `(negatives, positives)`.
-        progress_bar: draw a progress bar on stdout while sweeping.
+        progress_bar: draw a progress bar on stderr while sweeping.
 
     Returns:
         The best threshold and how many samples it classifies correctly.
@@ -127,27 +124,24 @@ def sweep_class_counts(
     best_correct = -1
     best_threshold = float(ordered[-1])
 
-    for index, score in enumerate(ordered):
-        negatives_here, positives_here = counts[score]
-        negatives_behind += negatives_here
-        positives_behind += positives_here
+    with make_progress(distinct, "Sweeping scores", enabled=progress_bar) as bar:
+        for index, score in enumerate(ordered):
+            negatives_here, positives_here = counts[score]
+            negatives_behind += negatives_here
+            positives_behind += positives_here
 
-        if progress_bar:
-            print_progress_bar(index + 1, distinct)
+            bar.update(index + 1)
 
-        # Everything up to and including this score is predicted negative, everything
-        # above it positive. Runs of equal scores are indivisible, which is automatic
-        # here: they are one entry.
-        correct = negatives_behind + (total_positive - positives_behind)
+            # Everything up to and including this score is predicted negative, everything
+            # above it positive. Runs of equal scores are indivisible, which is automatic
+            # here: they are one entry.
+            correct = negatives_behind + (total_positive - positives_behind)
 
-        if correct > best_correct:
-            best_correct = correct
-            # Below the largest score, sit between the two scores being separated; at the
-            # largest score, sit on it, which predicts everything negative.
-            best_threshold = (score + ordered[index + 1]) / 2 if index + 1 < distinct else float(score)
-
-    if progress_bar:
-        print_progress_bar(distinct, distinct)
+            if correct > best_correct:
+                best_correct = correct
+                # Below the largest score, sit between the two scores being separated; at
+                # the largest score, sit on it, which predicts everything negative.
+                best_threshold = (score + ordered[index + 1]) / 2 if index + 1 < distinct else float(score)
 
     # The one split no threshold inside the data can express: everything classified
     # positive, which needs a threshold strictly below the smallest score. nextafter gives

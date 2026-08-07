@@ -24,8 +24,10 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from thresher import log
 from thresher.exceptions import InsufficientDataError
-from thresher.utils import POSITIVE_LABEL, get_or_default, print_progress_bar
+from thresher.progress import make_progress
+from thresher.utils import POSITIVE_LABEL, get_or_default
 
 no_of_bins_default = 1024
 
@@ -37,7 +39,6 @@ known_params = frozenset({"no_of_bins"})
 def run(
     scores: Sequence[float],
     actual_classes: Sequence[int],
-    verbose: bool,
     progress_bar: bool,
     alg_options: Mapping[str, Any],
 ) -> float:
@@ -46,8 +47,7 @@ def run(
     Args:
         scores: the values being split.
         actual_classes: the matching ground-truth classes, as -1 and 1.
-        verbose: print progress information.
-        progress_bar: draw a progress bar on stdout.
+        progress_bar: draw a progress bar on stderr.
         alg_options: recognised keys, falling back to the module-level default:
             `no_of_bins` (1024) sets the resolution. The returned threshold is within one
             bin width of the best one, so doubling this halves the worst-case error and
@@ -73,8 +73,7 @@ def run(
     highest = max(scores)
     span = highest - lowest
 
-    if verbose:
-        print(f"Binning {len(scores)} scores over [{lowest}, {highest}] into {bins} bins.")
+    log.info("Binning {} scores over [{}, {}] into {} bins.", len(scores), lowest, highest, bins)
 
     negatives = [0] * bins
     positives = [0] * bins
@@ -91,8 +90,7 @@ def run(
         negatives, positives, lowest=lowest, highest=highest, progress_bar=progress_bar
     )
 
-    if verbose:
-        print(f"Best threshold {best_threshold} classifies {best_correct}/{len(scores)} correctly.")
+    log.info("Best threshold {} classifies {}/{} correctly.", best_threshold, best_correct, len(scores))
 
     return best_threshold
 
@@ -185,7 +183,7 @@ def sweep_bins(
             the ordinary case - `0.065 + (0.997 - 0.065)` is `0.9969999999999999`, and a
             threshold there classifies the largest samples positive while the counting
             below has them negative. `span` is derived from the pair, once.
-        progress_bar: draw a progress bar on stdout while sweeping.
+        progress_bar: draw a progress bar on stderr while sweeping.
 
     Returns:
         The best threshold expressible on a bin edge, and how many samples it classifies
@@ -210,23 +208,20 @@ def sweep_bins(
     negatives_behind = 0
     positives_behind = 0
 
-    for index in range(bins):
-        negatives_behind += negatives[index]
-        positives_behind += positives[index]
+    with make_progress(bins, "Sweeping bins", enabled=progress_bar) as bar:
+        for index in range(bins):
+            negatives_behind += negatives[index]
+            positives_behind += positives[index]
 
-        if progress_bar:
-            print_progress_bar(index + 1, bins)
+            bar.update(index + 1)
 
-        # A threshold at this bin's upper edge: everything up to here is predicted
-        # negative, everything above it positive.
-        correct = negatives_behind + (total_positive - positives_behind)
+            # A threshold at this bin's upper edge: everything up to here is predicted
+            # negative, everything above it positive.
+            correct = negatives_behind + (total_positive - positives_behind)
 
-        if correct > best_correct:
-            best_correct = correct
-            best_index = index
-
-    if progress_bar:
-        print_progress_bar(bins, bins)
+            if correct > best_correct:
+                best_correct = correct
+                best_index = index
 
     # Resolved once, for the winner only - the search below is far too expensive to run
     # for every candidate, and only the chosen split needs a threshold at all.

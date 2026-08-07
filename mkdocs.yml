@@ -40,12 +40,14 @@ nav:
   - Command line: cli.md
   - Running in parallel: backends.md
   - Running on Spark: spark.md
+  - Reporting and progress: logging.md
   - Handling errors: errors.md
   - API reference:
       - Thresher: api/thresher.md
       - Algorithms: api/algorithms.md
       - Backends: api/backends.md
       - Spark: api/spark.md
+      - Reporting: api/logging.md
       - Exceptions: api/exceptions.md
       - Utilities: api/utils.md
   - Changelog: changelog.md

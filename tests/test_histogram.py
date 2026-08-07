@@ -113,7 +113,7 @@ class TestBoundedMemory:
         for size in (50_000, 500_000):
             scores, actual_classes = overlapping(size)
             tracemalloc.start()
-            histogram.run(scores, actual_classes, verbose=False, progress_bar=False, alg_options={})
+            histogram.run(scores, actual_classes, progress_bar=False, alg_options={})
             _, peak = tracemalloc.get_traced_memory()
             tracemalloc.stop()
             peaks[size] = peak
@@ -129,7 +129,7 @@ class TestBoundedMemory:
         peaks = {}
         for bins in (64, 65_536):
             tracemalloc.start()
-            histogram.run(scores, actual_classes, False, False, {"no_of_bins": bins})
+            histogram.run(scores, actual_classes, False, {"no_of_bins": bins})
             _, peak = tracemalloc.get_traced_memory()
             tracemalloc.stop()
             peaks[bins] = peak
@@ -188,7 +188,7 @@ class TestBehaviour:
 
     def test_no_scores(self) -> None:
         with pytest.raises(InsufficientDataError):
-            histogram.run([], [], verbose=False, progress_bar=False, alg_options={})
+            histogram.run([], [], progress_bar=False, alg_options={})
 
 
 class TestBinEdgeAgreesWithPrediction:

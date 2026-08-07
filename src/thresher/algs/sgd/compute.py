@@ -12,6 +12,7 @@ from typing import Any
 
 import numpy as np
 
+from thresher import log
 from thresher.algs.common.stochastic import stochastic_process
 from thresher.utils import get_or_default
 
@@ -35,7 +36,6 @@ def sgd_solver(
     eval_func: EvalFunc,
     starting_point: float,
     gradient: float,
-    verbose: bool,
     num_of_iters: int,
     stop_thresh: float,
     alpha: float,
@@ -62,7 +62,6 @@ def sgd_solver(
             `previous_eval` - positive when the move helped.
         starting_point: threshold to start from, normally the mean of the scores.
         gradient: initial step size and direction.
-        verbose: print the state of every iteration.
         num_of_iters: maximum number of steps before giving up and returning anyway.
         stop_thresh: the absolute gain below which a step counts as making no progress.
         alpha: per-step decay applied to the gradient, damping the walk as it proceeds.
@@ -88,16 +87,17 @@ def sgd_solver(
     best_point, best_eval = previous_eval_point, evaluation
     steps_without_progress = 0
 
-    if verbose:
-        print(f"SGD initial run (from point {starting_point}). Evaluation: {evaluation}")
+    log.debug("SGD initial run (from point {}). Evaluation: {}", starting_point, evaluation)
 
     for iter_no in range(num_of_iters):
         previous_eval = evaluation
 
-        if verbose:
-            print(
-                f"SGD iteration {iter_no}. Previous evaluation: {previous_eval} for X:{previous_eval_point}"
-            )
+        log.debug(
+            "SGD iteration {}. Previous evaluation: {} for X:{}",
+            iter_no,
+            previous_eval,
+            previous_eval_point,
+        )
 
         # Keep the walk inside the range the scores actually span. A threshold outside it
         # puts every sample in one class, which is never a meaningful answer, and leaves
@@ -105,13 +105,11 @@ def sgd_solver(
         # below reports convergence on what is really a divergence.
         new_point = min(max(previous_eval_point + gradient, lower_bound), upper_bound)
 
-        if verbose:
-            print(f"SGD iteration {iter_no}. New point set to: {new_point} because gradient: {gradient}")
+        log.debug("SGD iteration {}. New point set to: {} because gradient: {}", iter_no, new_point, gradient)
 
         evaluation, gain = eval_func(new_point, previous_eval)
 
-        if verbose:
-            print(f"SGD iteration {iter_no}. Evaluation: {evaluation} and gain: {gain}")
+        log.debug("SGD iteration {}. Evaluation: {} and gain: {}", iter_no, evaluation, gain)
 
         previous_eval_point = new_point
 
@@ -138,8 +136,7 @@ def sgd_solver(
         if abs(gradient) > max_step:
             gradient = max_step if gradient > 0 else -max_step
 
-        if verbose:
-            print(f"SGD iteration {iter_no}. New gradient set to: {gradient}")
+        log.debug("SGD iteration {}. New gradient set to: {}", iter_no, gradient)
 
         if abs(gain) < stop_thresh:
             steps_without_progress += 1
@@ -154,7 +151,6 @@ def sgd_solver(
 def run(
     scores: Sequence[float],
     actual_classes: Sequence[int],
-    verbose: bool,
     progress_bar: bool,
     alg_options: Mapping[str, Any],
 ) -> float:
@@ -163,9 +159,10 @@ def run(
     Args:
         scores: the values being split.
         actual_classes: the matching ground-truth classes, as -1 and 1.
-        verbose: print the state of every iteration.
         progress_bar: accepted for signature compatibility with the other solvers; this
-            one reports through `verbose` only and never draws a bar.
+            one reports at DEBUG only and never draws a bar. It stops when it stops
+            improving rather than after a known number of steps, so there is no proportion
+            of the job done for a bar to show.
         alg_options: recognised keys, each falling back to its module-level default:
             `num_of_iters` (200) caps the number of steps, `stop_thresh` (0.001) is the
             improvement below which a step counts as making no progress,
@@ -199,8 +196,7 @@ def run(
             A `(mis_classification_ratio, gain)` pair, where gain is positive when this
             threshold improved on `previous_eval`.
         """
-        if verbose:
-            print(f"Currently evaluating threshold: {threshold}")
+        log.debug("Currently evaluating threshold: {}", threshold)
 
         new_eval = stochastic_process(threshold, scores, actual_classes, stoch_ratio)
         gain = previous_eval - new_eval
@@ -208,8 +204,7 @@ def run(
         return new_eval, gain
 
     starting_point = float(np.mean(scores))
-    if verbose:
-        print(f"Starting point set to: {starting_point}")
+    log.info("Walking down the error curve from the mean of the scores, {}.", starting_point)
 
     lower_bound, upper_bound = min(scores), max(scores)
 
@@ -230,7 +225,6 @@ def run(
         evaluate_threshold,
         starting_point,
         starting_gradient,
-        verbose,
         num_of_iters=num_of_iters,
         stop_thresh=stop_thresh,
         alpha=alpha,

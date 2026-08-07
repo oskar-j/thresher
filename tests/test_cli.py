@@ -269,13 +269,152 @@ class TestBackendOption:
         assert "local" in result.output and "ray" in result.output
 
 
-class TestOutputAndFailures:
+class TestVerbosity:
+    """`-v`, `-vv`, `-q` and `--verbosity` all set the same thing.
+
+    The command line is a program rather than a library, so it configures loguru itself:
+    the level and the message, on stderr, leaving stdout for the threshold.
+    """
+
     def test_verbose_reports_the_row_count(self, runner: CliRunner, basic_csv: Path) -> None:
         result = runner.invoke(main, [str(basic_csv), "--verbose"])
 
         assert result.exit_code == 0
         assert "Read 4 rows" in result.output
 
+    def test_silent_by_default(self, runner: CliRunner, basic_csv: Path) -> None:
+        result = runner.invoke(main, [str(basic_csv)])
+
+        assert result.exit_code == 0
+        # The bare number and nothing else, which is what makes it pipeable.
+        assert float(result.output.strip()) == pytest.approx(0.35)
+
+    def test_the_report_goes_to_stderr_and_the_answer_to_stdout(
+        self, runner: CliRunner, basic_csv: Path
+    ) -> None:
+        result = runner.invoke(main, [str(basic_csv), "-v"])
+
+        assert result.exit_code == 0
+        assert float(result.stdout.strip()) == pytest.approx(0.35)
+        assert "Read 4 rows" in result.stderr
+
+    def test_one_v_says_what_the_run_is_doing(self, runner: CliRunner, basic_csv: Path) -> None:
+        result = runner.invoke(main, [str(basic_csv), "-v"])
+
+        assert "INFO" in result.output
+        assert "DEBUG" not in result.output
+
+    def test_two_vs_say_every_step_of_it(self, runner: CliRunner, basic_csv: Path) -> None:
+        result = runner.invoke(main, [str(basic_csv), "-a", "sgd", "-vv"])
+
+        assert "DEBUG" in result.output
+
+    def test_more_vs_than_there_are_levels_is_not_an_error(self, runner: CliRunner, basic_csv: Path) -> None:
+        result = runner.invoke(main, [str(basic_csv), "-vvvvv"])
+
+        assert result.exit_code == 0
+
+    def test_the_level_can_be_named_outright(self, runner: CliRunner, basic_csv: Path) -> None:
+        result = runner.invoke(main, [str(basic_csv), "--verbosity", "info"])
+
+        assert result.exit_code == 0
+        assert "Read 4 rows" in result.output
+
+    def test_an_unknown_level_is_refused_by_the_parser(self, runner: CliRunner, basic_csv: Path) -> None:
+        result = runner.invoke(main, [str(basic_csv), "--verbosity", "chatty"])
+
+        assert result.exit_code == 2
+        assert "debug" in result.output, "the choices should be listed"
+
+    def test_quiet_silences_the_slow_algorithm_warning(self, runner: CliRunner, tmp_path: Path) -> None:
+        """The one thing the command says without being asked.
+
+        `ls` is comfortable to about 10,000 rows, so this crosses it deliberately - the
+        warning is the point, and `-q` is the way to turn it off.
+        """
+        threshold = algorithm.available_algorithms["ls"].data_vol_thresh
+        rows = "\n".join(
+            f"{i / (threshold + 200)},{-1 if i < (threshold + 200) // 2 else 1}"
+            for i in range(threshold + 200)
+        )
+        path = tmp_path / "big.csv"
+        path.write_text(f"score,actual\n{rows}\n")
+
+        noisy = runner.invoke(main, [str(path), "-a", "ls"])
+        quiet = runner.invoke(main, [str(path), "-a", "ls", "-q"])
+
+        assert "likely to be slow" in noisy.output
+        assert "likely to be slow" not in quiet.output
+        assert quiet.exit_code == 0
+
+    def test_quiet_beats_verbose_because_it_is_the_one_that_takes_something_away(
+        self, runner: CliRunner, basic_csv: Path
+    ) -> None:
+        result = runner.invoke(main, [str(basic_csv), "-vv", "-q"])
+
+        assert result.exit_code == 0
+        assert "Read 4 rows" not in result.output
+
+    def test_it_does_not_leave_the_library_configured_afterwards(
+        self, runner: CliRunner, basic_csv: Path, logs: list[str]
+    ) -> None:
+        """The command sets the level process-wide, which is a program's business.
+
+        Importable as `thresher.cli.main`, though - the suite calls it that way - so what
+        it leaves behind matters. A handler of its own is fine; taking out one somebody
+        else added is not, and this fixture's sink is exactly such a one.
+        """
+        runner.invoke(main, [str(basic_csv), "-vv"])
+
+        assert logs, "the command line removed a handler that was not its own"
+
+    def test_the_library_still_reports_on_stderr_afterwards(
+        self, runner: CliRunner, basic_csv: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The console handler is put back the way it was found.
+
+        The command replaces loguru's default handler with a compact one for the length of
+        an invocation. Leaving it removed would silence loguru for whatever called the
+        command - which, in-process, is an ordinary Python program.
+        """
+        runner.invoke(main, [str(basic_csv), "-v"])
+        capsys.readouterr()
+
+        thresher.Thresher(verbosity="info").optimize_threshold([0.1, 0.3, 0.4, 0.7], [-1, -1, 1, 1])
+
+        assert "Exact sweep" in capsys.readouterr().err
+
+    def test_the_level_it_set_does_not_outlive_the_invocation(
+        self, runner: CliRunner, basic_csv: Path, logs: list[str]
+    ) -> None:
+        runner.invoke(main, [str(basic_csv), "-vv"])
+        spoken = len(logs)
+
+        thresher.Thresher().optimize_threshold([0.1, 0.3, 0.4, 0.7], [-1, -1, 1, 1])
+
+        assert len(logs) == spoken, "the command line left the library verbose"
+
+
+class TestProgressOption:
+    def test_a_bar_is_drawn_when_it_is_asked_for(self, runner: CliRunner, basic_csv: Path) -> None:
+        result = runner.invoke(main, [str(basic_csv), "--progress"])
+
+        assert result.exit_code == 0
+        assert "100.0%" in result.stderr
+
+    def test_the_bar_does_not_reach_the_answer(self, runner: CliRunner, basic_csv: Path) -> None:
+        """It goes to stderr, so `thresher scores.csv --progress > out` still works."""
+        result = runner.invoke(main, [str(basic_csv), "--progress"])
+
+        assert float(result.stdout.strip()) == pytest.approx(0.35)
+
+    def test_no_bar_unless_it_is_asked_for(self, runner: CliRunner, basic_csv: Path) -> None:
+        result = runner.invoke(main, [str(basic_csv)])
+
+        assert "%" not in result.output
+
+
+class TestOutputAndFailures:
     def test_unreadable_input_is_reported(self, runner: CliRunner, tmp_path: Path) -> None:
         """A file with nothing in it at all, which pandas refuses outright.
 

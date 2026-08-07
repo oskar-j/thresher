@@ -7,6 +7,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-06
+
+Proper logging. Everything this package has to say now goes through
+[loguru](https://loguru.readthedocs.io/) at a level per message, one setting decides how
+much of it is emitted, and `tqdm` draws the progress bar where it is installed.
+
+### Added
+
+- **`verbosity`, on `Thresher`, `SparkThresher` and the command line.** It names the
+  lowest level that gets through — `'debug'`, `'info'`, `'warning'` (the default),
+  `'error'` or `'critical'` — and can be set three ways, in increasing precedence:
+
+  ```python
+  thresher.set_verbosity('info')                 # until it is set again
+  thresher.Thresher(verbosity='debug')           # this instance's runs
+  with thresher.verbosity('debug'):              # this block
+      ...
+  ```
+
+  The instance setting applies for the duration of each `optimize_threshold` call and to
+  nothing else, so two `Thresher` objects in one process can differ — one verbose, one
+  silent, at the same time. Neither logging system offers that on its own: both hold
+  their level globally, which is why the level is checked at the call site here, against a
+  `ContextVar`. A message below the level is never handed to loguru at all, so it costs
+  nothing to have written it.
+
+  An unknown level is a `ConfigurationError` where it is given — when the `Thresher` is
+  built, not several seconds into a long run.
+
+- **`tqdm` as an optional extra**, `pip install 'thresher-py[progress]'`. It draws the
+  progress bar when it is importable and the bar this package carries draws it when it is
+  not. tqdm is given a `bar_format` shaped like the built-in bar, so installing the extra
+  changes how a run looks and nothing else about it — including that a script watching
+  stderr sees the same percentages either way.
+
+- **`-v`, `-vv`, `-q`, `--verbosity` and `--progress` on the command line.** `-v` reports
+  each stage of a run and `-vv` each step inside it; `--verbosity` names the level
+  outright; `-q` is shorthand for `--verbosity error`, which is what silences the
+  slow-algorithm warning. Where `-q` and `-v` disagree, `-q` wins — it is the flag that
+  takes something away, so it can only have been meant.
+
+- **`thresher.propagate_to_logging()`**, which hands every record to the standard
+  library's `logging` as well, under the name of the module that emitted it. That is what
+  `logging.getLogger('thresher')` used to see. Off by default: an application with loguru
+  *and* `logging` writing to a console would otherwise print every record twice.
+
+### Changed
+
+- **Nothing in the package calls `print()` any more.** Twenty-two calls sat behind
+  `if verbose:` in six solvers, the dispatcher and the interface, writing to stdout — the
+  stream the command line reserves for its answer, and the one stream a library has no
+  business claiming. `tests/test_logging.py` walks the package's syntax trees and fails on
+  a `print` in any of it, so a solver written in the old style is caught rather than
+  reviewed for.
+
+- **Progress bars are drawn on stderr**, where the built-in one wrote to stdout before.
+  Nothing had noticed, because the command line had no way to ask for a bar — and this
+  release adds one. tqdm's own default is stderr, so this is also what lets the two
+  backends be swapped without the output moving.
+
+- **No bar is drawn while the log is at `debug`.** Both write to stderr, so together they
+  produce a bar interrupted by log lines and log lines interrupted by a bar; the level
+  wins. This rule existed before, applied by the genetic solver alone, and announced with
+  a printed `Warning! Enabling verbosity automatically disables a progress bar.` It now
+  applies to every solver and says nothing.
+
+- **The size warning is silenced with `thresher.set_verbosity('error')`**, not
+  `logging.getLogger('thresher').setLevel(logging.ERROR)`. The message says so itself. The
+  old form works again after one call to `propagate_to_logging()`.
+
+- **`SparkThresher` takes `verbosity`**, and still takes `verbose`. It has no
+  `progress_bar` option and gains none: the counting happens on executors, where nobody is
+  watching a terminal, and the driver's share is a sweep over a few thousand bins.
+
+- **`print_progress_bar` moved to `thresher.progress`.** It is still importable from
+  `thresher.utils`, where it has been since the first release, and delegates.
+
+### Removed
+
+- **`verbose` is gone from every solver signature.** The convention is now
+  `run(scores, actual_classes, progress_bar, alg_options)`, with the same two exceptions
+  as before — `linear.compute.run` takes no `alg_options` and `run_parallel` takes
+  `n_jobs`, which also loses its `verbose`. Verbosity is a property of the run rather than
+  an argument threaded through eight functions, which is the point of the change. The
+  `verbose` *option* on `Thresher` is unaffected: it still works, and means
+  `verbosity='debug'`.
+
+
 ## [0.7.3] - 2026-08-05
 
 Three defects in how the evolutionary solver turns one generation into the next, and into
@@ -1155,7 +1243,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.7.3...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/oskar-j/thresher/compare/v0.7.3...v0.8.0
 [0.7.3]: https://github.com/oskar-j/thresher/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/oskar-j/thresher/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/oskar-j/thresher/compare/v0.7.0...v0.7.1
