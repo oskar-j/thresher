@@ -3,7 +3,7 @@
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-from thresher import algorithm
+from thresher import algorithm, log
 from thresher.algorithm import DEFAULT
 from thresher.backends import get_backend
 from thresher.dispatch import run_computations, validate_algorithm_params
@@ -19,7 +19,16 @@ from thresher.utils import as_sequence, map_labels, validate_label_mapping
 #: mistyped name is never harmless here: it leaves the default silently in place, so the
 #: caller believes they configured a run they did not.
 KNOWN_OPTIONS = frozenset(
-    {"algorithm", "allow_parallel", "verbose", "progress_bar", "algorithm_params", "labels", "backend"}
+    {
+        "algorithm",
+        "allow_parallel",
+        "verbose",
+        "verbosity",
+        "progress_bar",
+        "algorithm_params",
+        "labels",
+        "backend",
+    }
 )
 
 
@@ -52,7 +61,6 @@ class ThresherBase:
             chosen_algorithm,
             scores,
             actual_classes,
-            self.options["verbose"],
             self.options["progress_bar"],
             self.options["allow_parallel"],
             self.options["algorithm_params"],
@@ -80,15 +88,22 @@ class Thresher(ThresherBase):
 
         Args:
             **kwargs: any of the documented options - 'algorithm', 'allow_parallel',
-                'verbose', 'progress_bar', 'algorithm_params', 'labels' and 'backend'.
-                `labels=None` is accepted and means no mapping, the same as leaving the
-                option out.
+                'verbosity', 'verbose', 'progress_bar', 'algorithm_params', 'labels' and
+                'backend'. `labels=None` is accepted and means no mapping, the same as
+                leaving the option out.
+
+                'verbosity' is how much this instance's runs report: `'debug'`, `'info'`,
+                `'warning'` (the default), `'error'` or `'critical'`. It applies for the
+                duration of each `optimize_threshold` call and to nothing else, so two
+                instances in one process can differ. 'verbose' is what it replaced;
+                `verbose=True` still means `verbosity='debug'`.
 
         Raises:
             ConfigurationError: if an option is passed whose name is not one of the
-                documented seven, if 'algorithm' names no known algorithm, if 'backend'
-                names no known backend, or if 'algorithm_params' is not a mapping or
-                holds a key the chosen algorithm does not read. It is a `ValueError`.
+                documented eight, if 'algorithm' names no known algorithm, if 'backend'
+                names no known backend, if 'verbosity' names no known level, or if
+                'algorithm_params' is not a mapping or holds a key the chosen algorithm
+                does not read. It is a `ValueError`.
             LabelMappingError: if 'labels' is given but is not a two-item list or tuple.
                 It is a `TypeError`.
             BackendDependencyError: if 'backend' is 'ray' and Ray is not installed. It is
@@ -100,6 +115,7 @@ class Thresher(ThresherBase):
             "algorithm": DEFAULT.id,
             "allow_parallel": True,
             "verbose": False,
+            "verbosity": None,
             "progress_bar": False,
             "algorithm_params": {},
             "backend": "local",
@@ -119,8 +135,9 @@ class Thresher(ThresherBase):
         self.options["algorithm"] = algorithm.retrieve_by_alias(self.options["algorithm"])
         # Resolve and validate now rather than at optimize_threshold time, so a bad
         # backend name - or a missing Ray, or an unusable labels pair, or a mistyped
-        # algorithm parameter - is reported when the object is built, not several seconds
-        # into a long run.
+        # algorithm parameter, or a level that is not one - is reported when the object is
+        # built, not several seconds into a long run.
+        self.options["verbosity"] = log.resolve_verbosity(self.options["verbosity"], self.options["verbose"])
         if self.options.get("labels") is not None:
             validate_label_mapping(self.options["labels"])
         if not isinstance(self.options["algorithm_params"], Mapping):
@@ -232,12 +249,15 @@ class Thresher(ThresherBase):
 
         chosen_algorithm: algorithm.Algorithm = self.options["algorithm"]
 
-        if self.options["verbose"]:
-            print(f"Chosen algorithm: {chosen_algorithm.full_name}")
+        # This instance's level, for this call and no longer - so one Thresher can be
+        # verbose while another, in the same process, is not.
+        with log.verbosity(self.options["verbosity"]):
+            log.info("Chosen algorithm: {}", chosen_algorithm.full_name)
 
-        # Coerced once, here, because this is the single place the package hands an answer
-        # back. numpy scalars are floats and behave as floats, but they carry their type
-        # into everything the result is put in - under numpy 2 a threshold read back out of
-        # a dict or a log line reads `np.float64(0.35)` - and which solvers leaked one
-        # depended on the algorithm, so the same data gave two different-looking answers.
-        return float(self._compute(chosen_algorithm, score_values, class_values))
+            # Coerced once, here, because this is the single place the package hands an
+            # answer back. numpy scalars are floats and behave as floats, but they carry
+            # their type into everything the result is put in - under numpy 2 a threshold
+            # read back out of a dict or a log line reads `np.float64(0.35)` - and which
+            # solvers leaked one depended on the algorithm, so the same data gave two
+            # different-looking answers.
+            return float(self._compute(chosen_algorithm, score_values, class_values))

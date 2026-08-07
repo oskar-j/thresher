@@ -26,12 +26,16 @@ SparkThresher(
     "hist",
     {"no_of_bins": 4096},
     labels=(0, 1),
-    verbose=True,
+    verbosity="info",
 ).optimize_threshold(df)
 ```
 
 The column names default to `"score"` and `"label"`, and nothing is assumed about the rest
 of the DataFrame — extra columns are simply not read.
+
+There is no `progress_bar` option here, deliberately. The counting happens on executors,
+where nobody is watching a terminal, and the driver's share of the work is a sweep over a
+few thousand bins — see [reporting and progress](logging.md).
 
 !!! note
 

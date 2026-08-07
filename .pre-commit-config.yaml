@@ -45,6 +45,11 @@ repos:
         # decorators read as untyped and every command in cli.py fails under strict.
         additional_dependencies:
           - click
+          - loguru
           - numpy
           - pandas-stubs
           - pytest
+          # tqdm is optional at runtime and imported behind a guard, but the hook still
+          # has to be able to resolve it: without the stubs its class reads as Any, and
+          # `strict` rejects the untyped call that builds a bar.
+          - types-tqdm

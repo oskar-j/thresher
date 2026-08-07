@@ -1,8 +1,9 @@
 """The `thresher` command-line interface.
 
 Reads scores and labels from a delimited file (or stdin) and prints the optimal threshold.
-The bare result goes to stdout and everything else to stderr, so the output can be piped
-into another command without stripping anything out.
+The bare result goes to stdout and everything else - the log, and the progress bar if one
+was asked for - to stderr, so the output can be piped into another command without
+stripping anything out.
 """
 
 import sys
@@ -12,11 +13,16 @@ from typing import Any
 import click
 import pandas as pd
 
-from thresher import algorithm
+from thresher import algorithm, log
 from thresher.backends import AVAILABLE_BACKENDS
 from thresher.interface import Thresher
 
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
+
+#: What `-v` and `-vv` mean. Nothing, then the run's shape, then its every step - and the
+#: first entry is the level the command runs at when neither flag is given, which is the
+#: same default the library has.
+VERBOSITY_BY_COUNT = ("warning", "info", "debug")
 
 
 def _parse_params(pairs: tuple[str, ...]) -> dict[str, Any]:
@@ -214,7 +220,33 @@ def _list_algorithms(ctx: click.Context, _param: click.Parameter, value: bool) -
     "needs nothing installed; 'ray' spreads it over a Ray cluster and needs "
     "thresher-py[ray]. Either changes the speed, never the answer.",
 )
-@click.option("-v", "--verbose", is_flag=True, help="Report progress on stderr.")
+@click.option(
+    "-v",
+    "--verbose",
+    "verbose_count",
+    count=True,
+    help="Report progress on stderr. Repeat for more: -v for what the run is doing, -vv "
+    "for every step of it.",
+)
+@click.option(
+    "-q",
+    "--quiet",
+    is_flag=True,
+    help="Report nothing short of an error, including the warning that the chosen "
+    "algorithm is slow for this much data.",
+)
+@click.option(
+    "--verbosity",
+    "verbosity_name",
+    type=click.Choice(log.LEVELS),
+    help="Set the reporting level outright, instead of counting -v flags.",
+)
+@click.option(
+    "--progress",
+    is_flag=True,
+    help="Draw a progress bar on stderr while the search runs. Uses tqdm where it is "
+    "installed - pip install 'thresher-py[progress]' - and a built-in bar where it is not.",
+)
 @click.option(
     "--list-algorithms",
     is_flag=True,
@@ -234,7 +266,10 @@ def main(
     header: bool,
     params: tuple[str, ...],
     backend: str,
-    verbose: bool,
+    verbose_count: int,
+    quiet: bool,
+    verbosity_name: str | None,
+    progress: bool,
 ) -> None:
     """Find the threshold that best separates two classes of scores.
 
@@ -247,7 +282,69 @@ def main(
       thresher scores.csv --labels 0,1 -a grid
       thresher data.tsv --sep '\\t' --score-column pred --label-column actual
       cat scores.csv | thresher - -a ls -p n_jobs=4
-      thresher big.csv --backend mp
+      thresher big.csv --backend mp --progress
+    """
+    # An explicit level wins over counted flags, and -q wins over both: it is the one that
+    # takes something away, so it can only have been meant.
+    level = verbosity_name or VERBOSITY_BY_COUNT[min(verbose_count, len(VERBOSITY_BY_COUNT) - 1)]
+    if quiet:
+        level = "error"
+
+    # A program may configure loguru, and this is one - see `log.cli_logging`.
+    with log.cli_logging(level):
+        _run(
+            input_file=input_file,
+            algorithm_name=algorithm_name,
+            score_column=score_column,
+            label_column=label_column,
+            labels_raw=labels_raw,
+            sep=sep,
+            header=header,
+            params=params,
+            backend=backend,
+            level=level,
+            progress=progress,
+        )
+
+
+def _run(
+    *,
+    input_file: str,
+    algorithm_name: str,
+    score_column: str | None,
+    label_column: str | None,
+    labels_raw: str | None,
+    sep: str,
+    header: bool,
+    params: tuple[str, ...],
+    backend: str,
+    level: str,
+    progress: bool,
+) -> None:
+    """Read the input, find the threshold and print it.
+
+    Split from `main` so the whole of it runs inside the console handler that `main`
+    installs, without indenting the body by one level for the sake of a `with`.
+
+    Args:
+        input_file: path to read, or `-` for stdin.
+        algorithm_name: the algorithm to run.
+        score_column: column holding the scores, by name or index.
+        label_column: column holding the classes, by name or index.
+        labels_raw: the two class labels, comma-separated, if they are not -1 and 1.
+        sep: field separator.
+        header: whether the first row names the columns.
+        params: the repeated `key=value` algorithm parameters.
+        backend: where the counting runs.
+        level: the verbosity this invocation asked for.
+        progress: whether to draw a progress bar.
+
+    Returns:
+        None. The threshold is written to stdout.
+
+    Raises:
+        click.ClickException: for anything the caller can act on - an unreadable file, an
+            empty one, an unknown algorithm, unusable labels, a missing backend extra.
     """
     source: Any = sys.stdin if input_file == "-" else Path(input_file)
 
@@ -272,7 +369,8 @@ def main(
 
     options: dict[str, Any] = {
         "algorithm": algorithm_name,
-        "verbose": verbose,
+        "verbosity": level,
+        "progress_bar": progress,
         "algorithm_params": _parse_params(params),
         "backend": backend,
     }
@@ -280,8 +378,7 @@ def main(
     if label_pair is not None:
         options["labels"] = label_pair
 
-    if verbose:
-        click.echo(f"Read {len(scores)} rows from {input_file}.", err=True)
+    log.info("Read {} rows from {}.", len(scores), input_file)
 
     try:
         threshold = Thresher(**options).optimize_threshold(scores, actual_classes)

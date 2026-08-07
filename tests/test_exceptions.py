@@ -113,7 +113,7 @@ FAILURES: list[tuple[str, Callable[[], object], type[Exception], type[Exception]
     ),
     (
         "too little data",
-        lambda: exact_compute.run([], [], verbose=False, progress_bar=False, alg_options={}),
+        lambda: exact_compute.run([], [], progress_bar=False, alg_options={}),
         exc.InsufficientDataError,
         ValueError,
     ),

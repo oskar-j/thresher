@@ -10,11 +10,10 @@ left to decide and was announced for removal. The algorithm is now settled when 
 `Thresher` is built, not per call.
 """
 
-import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from thresher import algorithm
+from thresher import algorithm, log
 from thresher.algs.exact import compute as exact_compute
 from thresher.algs.genetic import compute as gen_compute
 from thresher.algs.grid import compute as grid_compute
@@ -25,12 +24,10 @@ from thresher.backends import Backend, LocalBackend
 from thresher.exceptions import UNKNOWN_PARAMS, AlgorithmNotWiredError, ConfigurationError
 from thresher.utils import validate_actual_classes, validate_lengths, validate_scores
 
-logger = logging.getLogger(__name__)
-
 SLOW_FOR_THIS_MUCH_DATA = (
-    "%s is likely to be slow on %s rows - it is usually comfortable up to about %s. "
+    "{} is likely to be slow on {} rows - it is usually comfortable up to about {}. "
     "The 'exact' algorithm is exact and O(n log n), and is the default for this reason. "
-    "Silence this with logging.getLogger('thresher').setLevel(logging.ERROR)."
+    "Silence this with thresher.set_verbosity('error')."
 )
 
 EXACT_ALGORITHM = algorithm.available_algorithms["exact"]
@@ -97,7 +94,6 @@ def run_computations(
     chosen_algorithm: algorithm.Algorithm,
     scores: Sequence[float],
     actual_classes: Sequence[int],
-    verbose: bool,
     progress_bar: bool,
     allow_parallel: bool,
     alg_options: Mapping[str, Any],
@@ -110,8 +106,7 @@ def run_computations(
         scores: the values being split.
         actual_classes: the matching ground-truth classes. Must already be normalized to
             -1 and 1; `Thresher.optimize_threshold` does that before calling here.
-        verbose: print progress information.
-        progress_bar: draw a progress bar on stdout, where the solver supports one.
+        progress_bar: draw a progress bar on stderr, where the solver supports one.
         allow_parallel: permit multiprocessing. Only linear search acts on this, and only
             when `alg_options` also carries an `n_jobs` other than 1.
         alg_options: the user's `algorithm_params`. Each solver reads the keys it knows;
@@ -144,38 +139,35 @@ def run_computations(
     # A warning rather than a refusal: the thresholds are order-of-magnitude guidance from
     # one machine, and a caller may well have reason to wait.
     if len(scores) > chosen_algorithm.data_vol_thresh:
-        logger.warning(
+        log.warning(
             SLOW_FOR_THIS_MUCH_DATA,
             chosen_algorithm.full_name,
             f"{len(scores):,}",
             f"{chosen_algorithm.data_vol_thresh:,}",
         )
 
-    if verbose:
-        print(f"Executing the {chosen_algorithm.full_name} algorithm... please wait for the result.")
+    log.info("Executing the {} algorithm... please wait for the result.", chosen_algorithm.full_name)
 
     resolved_backend = backend or LocalBackend()
 
     if chosen_algorithm == EXACT_ALGORITHM:
-        return exact_compute.run(scores, actual_classes, verbose, progress_bar, alg_options, resolved_backend)
+        return exact_compute.run(scores, actual_classes, progress_bar, alg_options, resolved_backend)
     if chosen_algorithm == HISTOGRAM_ALGORITHM:
-        return hist_compute.run(scores, actual_classes, verbose, progress_bar, alg_options)
+        return hist_compute.run(scores, actual_classes, progress_bar, alg_options)
     if chosen_algorithm == LINEAR_ALGORITHM:
         # An explicit n_jobs is the older way of asking for the 'mp' backend, and says the
         # same thing, so a backend chosen deliberately takes precedence over it rather
         # than the two competing for the same cores.
         wants_processes = allow_parallel and ("n_jobs" in alg_options) and (alg_options["n_jobs"] != 1)
         if wants_processes and resolved_backend.name == "local":
-            return linear_compute.run_parallel(scores, actual_classes, verbose, alg_options["n_jobs"])
-        return linear_compute.run(scores, actual_classes, verbose, progress_bar, resolved_backend)
+            return linear_compute.run_parallel(scores, actual_classes, alg_options["n_jobs"])
+        return linear_compute.run(scores, actual_classes, progress_bar, resolved_backend)
     if chosen_algorithm == STOCHASTIC_GRADIENT_DESCENT:
-        return sgd_compute.run(scores, actual_classes, verbose, progress_bar, alg_options)
+        return sgd_compute.run(scores, actual_classes, progress_bar, alg_options)
     if chosen_algorithm == GENETIC_ALGORITHM:
-        return gen_compute.run(scores, actual_classes, verbose, progress_bar, alg_options)
+        return gen_compute.run(scores, actual_classes, progress_bar, alg_options)
     if chosen_algorithm == GRID_SEARCH_ALGORITHM:
-        return grid_compute.run(
-            scores, actual_classes, verbose, progress_bar, alg_options, backend=resolved_backend
-        )
+        return grid_compute.run(scores, actual_classes, progress_bar, alg_options, backend=resolved_backend)
     if chosen_algorithm == STOCHASTIC_GRID_SEARCH_ALGORITHM:
-        return grid_compute.run_stoch(scores, actual_classes, verbose, progress_bar, alg_options)
+        return grid_compute.run_stoch(scores, actual_classes, progress_bar, alg_options)
     raise AlgorithmNotWiredError

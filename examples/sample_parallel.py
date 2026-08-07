@@ -38,7 +38,7 @@ def main() -> None:
     scores, actual_classes = sample_data()
 
     # The general form: any of exact, ls and grid can use it.
-    parallel = thresher.Thresher(backend="mp", verbose=True)
+    parallel = thresher.Thresher(backend="mp", verbosity="info")
     print(f"Exact sweep on the mp backend: {parallel.optimize_threshold(scores, actual_classes)}")
 
     # The same thing with the process count chosen explicitly. -1 would mean every

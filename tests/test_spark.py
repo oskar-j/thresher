@@ -213,31 +213,57 @@ class TestRejections:
 
 
 class TestWhatItReports:
-    """`verbose` and the warnings are user-facing, so they should actually say something."""
+    """The level and the warnings are user-facing, so they should actually say something."""
 
-    def test_verbose_describes_the_aggregation(self, frame: Any, caplog: pytest.LogCaptureFixture) -> None:
+    def test_verbosity_describes_the_aggregation(self, frame: Any, logs: list[str]) -> None:
         from thresher.spark import SparkThresher
 
-        with caplog.at_level("INFO", logger="thresher.spark"):
-            SparkThresher("hist", verbose=True).optimize_threshold(
-                frame([0.1, 0.3, 0.4, 0.7], [-1, -1, 1, 1]), "score", "label"
-            )
+        SparkThresher("hist", verbosity="info").optimize_threshold(
+            frame([0.1, 0.3, 0.4, 0.7], [-1, -1, 1, 1]), "score", "label"
+        )
 
-        assert "4 rows" in caplog.text, "should say how much it is aggregating"
-        assert "Histogram" in caplog.text, "and which algorithm is deciding"
+        text = "".join(logs)
+        assert "4 rows" in text, "should say how much it is aggregating"
+        assert "Histogram" in text, "and which algorithm is deciding"
 
-    def test_silent_unless_asked(self, frame: Any, caplog: pytest.LogCaptureFixture) -> None:
+    def test_verbose_is_still_accepted(self, frame: Any, logs: list[str]) -> None:
+        """The option `verbosity` replaced, kept working here as it is on `Thresher`."""
         from thresher.spark import SparkThresher
 
-        with caplog.at_level("INFO", logger="thresher.spark"):
-            SparkThresher("hist").optimize_threshold(
-                frame([0.1, 0.3, 0.4, 0.7], [-1, -1, 1, 1]), "score", "label"
-            )
+        SparkThresher("hist", verbose=True).optimize_threshold(
+            frame([0.1, 0.3, 0.4, 0.7], [-1, -1, 1, 1]), "score", "label"
+        )
 
-        assert caplog.text == ""
+        assert "4 rows" in "".join(logs)
+
+    def test_silent_unless_asked(self, frame: Any, logs: list[str]) -> None:
+        from thresher.spark import SparkThresher
+
+        SparkThresher("hist").optimize_threshold(
+            frame([0.1, 0.3, 0.4, 0.7], [-1, -1, 1, 1]), "score", "label"
+        )
+
+        assert logs == []
+
+    def test_nothing_is_drawn_on_the_console(self, frame: Any, capsys: pytest.CaptureFixture[str]) -> None:
+        """No progress bar reaches Spark, whatever the level.
+
+        The counting happens on executors and the driver's share is a sweep over a
+        thousand bins, so there is nothing here worth watching - and `SparkThresher` has
+        no option that could ask for one. Asserted rather than assumed, because the sweeps
+        it calls are the same ones `hist` and `exact` draw bars from in memory.
+        """
+        from thresher.spark import SparkThresher
+
+        capsys.readouterr()
+        SparkThresher("hist", verbosity="info").optimize_threshold(
+            frame([0.1, 0.3, 0.4, 0.7], [-1, -1, 1, 1]), "score", "label"
+        )
+
+        assert "%" not in capsys.readouterr().out
 
     def test_a_wide_collect_suggests_the_bounded_algorithm(
-        self, frame: Any, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+        self, frame: Any, logs: list[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """`exact` ships one row per distinct score, which stops being cheap eventually.
 
@@ -248,12 +274,11 @@ class TestWhatItReports:
 
         monkeypatch.setattr("thresher.spark.DISTINCT_SCORE_WARNING", 2)
 
-        with caplog.at_level("WARNING", logger="thresher.spark"):
-            SparkThresher("exact").optimize_threshold(
-                frame([0.1, 0.3, 0.4, 0.7], [-1, -1, 1, 1]), "score", "label"
-            )
+        SparkThresher("exact").optimize_threshold(
+            frame([0.1, 0.3, 0.4, 0.7], [-1, -1, 1, 1]), "score", "label"
+        )
 
-        assert "hist" in caplog.text, "the warning should name the alternative"
+        assert "hist" in "".join(logs), "the warning should name the alternative"
 
     @pytest.mark.parametrize("bins", [0, -1])
     def test_a_bin_count_below_one_is_rejected(self, frame: Any, bins: int) -> None:

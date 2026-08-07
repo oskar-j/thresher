@@ -266,11 +266,15 @@ def print_progress_bar(
     length: int = 100,
     fill: str = "#",
 ) -> None:
-    """Call in a loop to draw a terminal progress bar in place.
+    """Draw one frame of the built-in progress bar. Moved to `thresher.progress`.
+
+    Kept here because it has been importable from this module since the first release.
+    Everything inside the package now goes through `thresher.progress.make_progress`,
+    which picks between this bar and tqdm.
 
     Args:
         iteration: current iteration.
-        total: total number of iterations. A final newline is printed once the two match.
+        total: total number of iterations. The line is ended once the two match.
         prefix: string printed before the bar.
         suffix: string printed after the bar.
         decimals: number of decimals in the percentage.
@@ -278,12 +282,13 @@ def print_progress_bar(
         fill: bar fill character.
 
     Returns:
-        None. The bar is written to stdout.
+        None. The bar is written to stderr - it was stdout until 0.8.0, which is the
+        stream the command line prints its answer on.
     """
-    percent = f"{100 * (iteration / float(total)):.{decimals}f}"
-    filled_length = int(length * iteration // total)
-    bar = fill * filled_length + "-" * (length - filled_length)
-    print(f"\r{prefix} |{bar}| {percent}% {suffix}", end="\r")
-    # Print New Line on Complete
-    if iteration == total:
-        print()
+    # Imported here rather than at module scope. This module is pulled in while the
+    # package itself is still initialising, by way of `interface`, and a module-level
+    # import would drag `progress` - and through it `log` and loguru - into that chain for
+    # the sake of a function nothing inside the package calls any more.
+    from thresher.progress import print_progress_bar as draw
+
+    draw(iteration, total, prefix, suffix, decimals, length, fill)

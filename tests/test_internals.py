@@ -1,8 +1,9 @@
 """Helpers and reporting paths.
 
 These are the parts the end-to-end tests reach around rather than through: the shared
-utilities, and everything guarded by `verbose` or `progress_bar`. They are tested here on
-their own terms - what each returns or prints - rather than being exercised incidentally.
+utilities, and everything guarded by `verbosity` or `progress_bar`. They are tested here
+on their own terms - what each returns or reports - rather than being exercised
+incidentally.
 """
 
 import importlib.metadata
@@ -10,7 +11,7 @@ import math
 import re
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pandas as pd
 import pytest
@@ -21,7 +22,8 @@ from thresher.algs.common.meta_optimizer import calculate_range_mean, get_mean_v
 from thresher.algs.common.stochastic import stochastic_process
 from thresher.algs.common.tools import granularity_of_scores
 from thresher.algs.grid import compute as grid_compute
-from thresher.utils import get_or_default, map_labels, pairwise, print_progress_bar
+from thresher.progress import print_progress_bar
+from thresher.utils import get_or_default, map_labels, pairwise
 
 Dataset = tuple[list[float], list[int]]
 DatasetFactory = Callable[..., Dataset]
@@ -115,66 +117,119 @@ class TestUtils:
 
     def test_progress_bar_draws_and_finishes(self, capsys: pytest.CaptureFixture[str]) -> None:
         print_progress_bar(5, 10, prefix="working", suffix="done", length=10)
-        midway = capsys.readouterr().out
+        # stderr since 0.8.0: stdout is where the command line prints its answer.
+        midway = capsys.readouterr().err
 
         assert "working" in midway
         assert "50.0%" in midway
         assert not midway.endswith("\n"), "an unfinished bar redraws in place"
 
         print_progress_bar(10, 10, length=10)
-        complete = capsys.readouterr().out
+        complete = capsys.readouterr().err
 
         assert "100.0%" in complete
         assert complete.endswith("\n"), "a finished bar ends the line"
 
+    def test_it_is_still_importable_from_utils(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """It moved to `thresher.progress` in 0.8.0, and has been importable here since
+        the first release."""
+        from thresher.utils import print_progress_bar as from_utils
+
+        from_utils(1, 2, length=10)
+
+        assert "50.0%" in capsys.readouterr().err
+
 
 class TestReporting:
-    """`verbose` and `progress_bar` are user-facing options and should do something."""
+    """`verbosity` and `progress_bar` are user-facing options and should do something."""
+
+    SCORES: ClassVar[list[float]] = [0.1, 0.15, 0.2, 0.22, 0.4, 0.7, 0.8, 0.9]
+    CLASSES: ClassVar[list[int]] = [-1, -1, -1, -1, 1, 1, 1, 1]
 
     @pytest.mark.parametrize("algorithm_name", REPORTING_ALGORITHMS)
-    def test_verbose_explains_what_it_is_doing(
-        self, capsys: pytest.CaptureFixture[str], algorithm_name: str
+    def test_verbosity_explains_what_it_is_doing(self, logs: list[str], algorithm_name: str) -> None:
+        thresher.Thresher(algorithm=algorithm_name, verbosity="debug").optimize_threshold(
+            self.SCORES, self.CLASSES
+        )
+
+        assert logs, f"{algorithm_name} said nothing when asked to"
+
+    @pytest.mark.parametrize("algorithm_name", REPORTING_ALGORITHMS)
+    def test_every_algorithm_reports_its_own_run_and_not_only_the_dispatcher(
+        self, logs: list[str], algorithm_name: str
     ) -> None:
-        scores = [0.1, 0.15, 0.2, 0.22, 0.4, 0.7, 0.8, 0.9]
-        actual_classes = [-1, -1, -1, -1, 1, 1, 1, 1]
+        """Something has to come from the solver itself, not just from the way in.
 
-        thresher.Thresher(algorithm=algorithm_name, verbose=True).optimize_threshold(scores, actual_classes)
+        `interface` and `dispatch` log two lines for every run whatever the algorithm, so
+        asserting only that *something* was logged would pass for a solver that says
+        nothing at all.
+        """
+        thresher.Thresher(algorithm=algorithm_name, verbosity="debug").optimize_threshold(
+            self.SCORES, self.CLASSES
+        )
 
-        assert capsys.readouterr().out.strip(), f"{algorithm_name} said nothing when asked to"
+        from_solver = [line for line in logs if ":thresher.algs." in line]
+
+        assert from_solver, f"{algorithm_name} reported nothing of its own"
+
+    @pytest.mark.parametrize("algorithm_name", REPORTING_ALGORITHMS)
+    def test_nothing_is_logged_at_the_default_level(self, logs: list[str], algorithm_name: str) -> None:
+        """The default is 'warning', and an ordinary run has nothing to warn about."""
+        thresher.Thresher(algorithm=algorithm_name).optimize_threshold(self.SCORES, self.CLASSES)
+
+        assert logs == []
 
     @pytest.mark.parametrize("algorithm_name", REPORTING_ALGORITHMS)
     def test_progress_bar_reaches_completion(
         self, capsys: pytest.CaptureFixture[str], algorithm_name: str
     ) -> None:
-        scores = [0.1, 0.15, 0.2, 0.22, 0.4, 0.7, 0.8, 0.9]
-        actual_classes = [-1, -1, -1, -1, 1, 1, 1, 1]
-
         thresher.Thresher(algorithm=algorithm_name, progress_bar=True).optimize_threshold(
-            scores, actual_classes
+            self.SCORES, self.CLASSES
         )
 
-        output = capsys.readouterr().out
-        # sgd reports through verbose only and never draws a bar; the rest must finish.
+        output = capsys.readouterr().err
+        # sgd has no step count to report a proportion of; the rest must finish. The
+        # percentage is asserted rather than the shape of the bar because either tqdm or
+        # the built-in bar may have drawn it - they are formatted to agree on that much.
         if algorithm_name != "sgd":
             assert "100.0%" in output, f"{algorithm_name} left its progress bar unfinished"
 
-    def test_verbose_names_the_algorithm_that_ran(self, capsys: pytest.CaptureFixture[str]) -> None:
-        thresher.Thresher(verbose=True).optimize_threshold([0.1, 0.3, 0.4, 0.7], [-1, -1, 1, 1])
+    def test_verbosity_names_the_algorithm_that_ran(self, logs: list[str]) -> None:
+        thresher.Thresher(verbosity="info").optimize_threshold([0.1, 0.3, 0.4, 0.7], [-1, -1, 1, 1])
 
-        assert "Exact sweep" in capsys.readouterr().out
+        assert any("Exact sweep" in line for line in logs)
 
-    def test_verbose_and_progress_bar_together_on_the_genetic_solver(
+    def test_verbose_is_still_accepted_and_means_debug(self, logs: list[str]) -> None:
+        """The option `verbosity` replaced. It printed every solver's per-step detail."""
+        thresher.Thresher(algorithm="sgd", verbose=True).optimize_threshold(self.SCORES, self.CLASSES)
+
+        assert any(line.startswith("DEBUG") for line in logs)
+
+    def test_one_instance_being_verbose_does_not_make_another_one_verbose(self, logs: list[str]) -> None:
+        """The level is per-call, which neither logging system offers on its own."""
+        loud = thresher.Thresher(verbosity="debug")
+        quiet = thresher.Thresher()
+
+        loud.optimize_threshold(self.SCORES, self.CLASSES)
+        spoken = len(logs)
+        quiet.optimize_threshold(self.SCORES, self.CLASSES)
+
+        assert spoken > 0
+        assert len(logs) == spoken, "the second instance logged on the first one's setting"
+
+    def test_a_progress_bar_gives_way_to_the_detail_it_would_overwrite(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # It refuses to do both, because they would fight over the terminal.
-        scores = [0.1, 0.15, 0.2, 0.22, 0.4, 0.7, 0.8, 0.9]
-        actual_classes = [-1, -1, -1, -1, 1, 1, 1, 1]
+        """Both go to stderr, so at DEBUG the bar is not drawn - see `thresher.progress`.
 
-        thresher.Thresher(algorithm="gen", verbose=True, progress_bar=True).optimize_threshold(
-            scores, actual_classes
+        Until 0.8.0 this rule was the genetic solver's alone, and it announced itself with
+        a printed warning.
+        """
+        thresher.Thresher(algorithm="gen", verbosity="debug", progress_bar=True).optimize_threshold(
+            self.SCORES, self.CLASSES
         )
 
-        assert "automatically disables a progress bar" in capsys.readouterr().out
+        assert "100.0%" not in capsys.readouterr().err
 
 
 class TestEmptyAndDegenerateInput:
@@ -182,13 +237,13 @@ class TestEmptyAndDegenerateInput:
         from thresher.algs.exact import compute as exact_compute
 
         with pytest.raises(ValueError, match="At least one score"):
-            exact_compute.run([], [], verbose=False, progress_bar=False, alg_options={})
+            exact_compute.run([], [], progress_bar=False, alg_options={})
 
     def test_linear_search_needs_two_scores_to_find_a_midpoint(self) -> None:
         from thresher.algs.linear import compute as linear_compute
 
         with pytest.raises(ValueError, match="At least two scores"):
-            linear_compute.run([0.5], [1], verbose=False, progress_bar=False)
+            linear_compute.run([0.5], [1], progress_bar=False)
 
     def test_stochastic_grid_with_reshuffling(self) -> None:
         # Draws a fresh subsample per candidate rather than reusing one.
@@ -228,7 +283,6 @@ class TestDispatch:
                 unwired,
                 [0.1, 0.9],
                 [-1, 1],
-                verbose=False,
                 progress_bar=False,
                 allow_parallel=False,
                 alg_options={},
@@ -335,7 +389,6 @@ class TestStochasticGridSampling:
         grid_compute.run_stoch(
             scores,
             actual_classes,
-            verbose=False,
             progress_bar=False,
             alg_options={"stoch_ratio": sample_ratio, "reshuffle": True, "no_of_decimal_places": 1},
         )
@@ -362,7 +415,6 @@ class TestStochasticGridSampling:
             grid_compute.run_stoch(
                 scores,
                 actual_classes,
-                verbose=False,
                 progress_bar=False,
                 alg_options={"reshuffle": True, "no_of_decimal_places": 1},
             )
@@ -386,7 +438,6 @@ class TestStochasticGridSampling:
             grid_compute.run_stoch(
                 scores,
                 actual_classes,
-                verbose=False,
                 progress_bar=False,
                 alg_options={"reshuffle": False, "no_of_decimal_places": 1},
             )

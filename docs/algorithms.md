@@ -43,8 +43,8 @@ Each algorithm declares the input size beyond which it becomes slow, and logs a 
 rather than making you wait to find out:
 
 ```
-WARNING thresher.dispatch: Linear search is likely to be slow on 12,000 rows - it is
-usually comfortable up to about 10,000. The 'exact' algorithm is exact and O(n log n)...
+WARNING  Linear search is likely to be slow on 12,000 rows - it is usually comfortable up
+to about 10,000. The 'exact' algorithm is exact and O(n log n)...
 ```
 
 | Algorithm | Comfortable up to | Why |
@@ -58,12 +58,14 @@ usually comfortable up to about 10,000. The 'exact' algorithm is exact and O(n l
 | `ls` | 10,000 | `O(n²)` — 0.9 s at 4,000 rows becomes 18 s at 16,000 |
 
 These are guidance rather than limits, measured on one laptop at roughly where a run passes
-ten seconds. Crossing one warns and continues. Silence it the ordinary way:
+ten seconds. Crossing one warns and continues. Silence it by asking for less:
 
 ```python
-import logging
-logging.getLogger("thresher").setLevel(logging.ERROR)
+import thresher
+thresher.set_verbosity("error")
 ```
+
+See [reporting and progress](logging.md) for the rest of what a run can be asked to say.
 
 ## Exact sweep
 

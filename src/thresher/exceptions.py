@@ -50,6 +50,11 @@ UNKNOWN_ALGORITHM_NAME = (
 
 UNKNOWN_BACKEND_NAME = "Unknown backend {name!r}. Available backends are: {available}."
 
+UNKNOWN_VERBOSITY = (
+    "Unknown verbosity {got!r}. It names the lowest level this package reports, and has "
+    "to be one of: {valid}. The default is 'warning', which is what leaving it out asks for."
+)
+
 PARALLEL_BOOTSTRAP_FAILED = (
     "The worker processes could not start, so no counting was done. This almost always "
     "means the calling script builds its Thresher at module level: on start methods that "

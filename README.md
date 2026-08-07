@@ -62,6 +62,7 @@ underneath — which of the seven search algorithms runs, and how hard it looks.
 - [Custom parameters](#custom-parameters)
   - [Control parameters for the algorithms](#control-parameters-for-the-algorithms)
 - [Sample usage](#sample-usage)
+- [Reporting and progress](#reporting-and-progress)
 - [Handling errors](#handling-errors)
 - [Command line](#command-line)
 - [Running in parallel](#running-in-parallel)
@@ -135,8 +136,8 @@ Each algorithm declares the input size beyond which it becomes slow, and warns r
 making you wait to find out:
 
 ```
-WARNING thresher.dispatch: Linear search is likely to be slow on 12,000 rows - it is
-usually comfortable up to about 10,000. The 'exact' algorithm is exact and O(n log n)...
+WARNING  Linear search is likely to be slow on 12,000 rows - it is usually comfortable up
+to about 10,000. The 'exact' algorithm is exact and O(n log n)...
 ```
 
 | Algorithm | Comfortable up to | Why |
@@ -150,11 +151,10 @@ usually comfortable up to about 10,000. The 'exact' algorithm is exact and O(n l
 
 These come from the timings in `examples/benchmark.py` on one laptop, at roughly where a
 run passes ten seconds. They are guidance, not limits — a faster machine moves them all up,
-which is why crossing one warns rather than refuses. Silence it with ordinary logging
-configuration:
+which is why crossing one warns rather than refuses. Silence it by asking for less:
 
 ```python
-logging.getLogger("thresher").setLevel(logging.ERROR)
+thresher.set_verbosity('error')
 ```
 
 ## Implemented algorithms
@@ -498,7 +498,7 @@ It's possible to provide additional parameters in the `Thresher` constructor.
 ```python
 Thresher(algorithm='exact',
          allow_parallel=True,
-         verbose=False,
+         verbosity='warning',
          progress_bar=False,
          labels=(0,1))
 ```
@@ -509,10 +509,15 @@ Here is a description of what does every particular parameter do:
 The same effect can be achieved by calling `set_algorithm(algorithm_name)` on the `Thresher` instance.
 `'auto'`, `'default'` and `'default_heuristics'` are accepted as synonyms for the default
 * **allow_parallel** (default value: `True`) - enables/disabled multiprocessing for algorithms
-* **verbose** (default value: `False`) - enables verbosity
-* **progress_bar** (default value: `False`) - shows a progress bar in the terminal (if supported by the algorithm)
+* **verbosity** (default value: `'warning'`) - how much this instance's runs report:
+`'debug'`, `'info'`, `'warning'`, `'error'` or `'critical'`. Added in `0.8.0` - see
+[reporting and progress](#reporting-and-progress)
+* **verbose** (default value: `False`) - what `verbosity` replaced. `verbose=True` still works,
+and means `verbosity='debug'`
+* **progress_bar** (default value: `False`) - shows a progress bar on stderr (if supported by the algorithm)
 * **labels** - necessary if your labels are different from `(-1, 1)` - first item from the tuple/list is a negative label,
 and the second item is a positive label
+* **backend** (default value: `'local'`) - where the counting happens; see [running in parallel](#running-in-parallel)
 
 ### Control parameters for the algorithms
 
@@ -556,6 +561,62 @@ print(f'Optimization result: {t.optimize_threshold(cases, actual_labels)}')
 ```
 
 See the [examples](https://github.com/oskar-j/thresher/tree/main/examples) directory for more sample code.
+
+## Reporting and progress
+
+Added in `0.8.0`. Everything the package has to say goes through
+[loguru](https://loguru.readthedocs.io/), at a level per message, and one setting decides
+how much of it you see. Before that, most of it went to `print()` behind an `if verbose:`
+— on stdout, unformatted and unroutable — and the rest went to the standard library's
+`logging`, from two modules only.
+
+```python
+Thresher(verbosity='info').optimize_threshold(scores, actual_classes)
+```
+
+| Level | What you get |
+|---|---|
+| `debug` | every step: each sgd iteration, each generation of the evolutionary search |
+| `info` | the shape of the run: the algorithm, the data, the answer and how good it is |
+| `warning` | **the default** — only what you should know about a run going ahead anyway |
+| `error`, `critical` | nothing, in practice: failures here are raised rather than logged |
+
+Three ways to set it, in increasing precedence:
+
+```python
+thresher.set_verbosity('info')                 # until it is set again
+thresher.Thresher(verbosity='debug')           # this instance's runs
+with thresher.verbosity('debug'):              # this block
+    ...
+```
+
+The instance setting applies for the duration of each `optimize_threshold` call and to
+nothing else, so **two `Thresher` objects in one process can differ** — one verbose, one
+silent, at the same time. Neither logging system offers that on its own: both hold their
+level globally.
+
+The package installs no loguru handler, so records go wherever your application has
+pointed loguru — `logger.disable('thresher')` silences it, and
+`thresher.propagate_to_logging()` hands the records to the standard library as well, which
+is what `logging.getLogger('thresher')` used to see.
+
+### Progress bars
+
+```python
+Thresher(progress_bar=True).optimize_threshold(scores, actual_classes)
+```
+
+Drawn by [tqdm](https://tqdm.github.io/) where it is installed and by a built-in bar where
+it is not:
+
+```bash
+pip install 'thresher-py[progress]'
+```
+
+Both are formatted the same way, so installing the extra changes how a run looks and
+nothing else about it. A bar goes to **stderr**, so the command line's answer on stdout
+still pipes cleanly, and none is drawn from a worker process, from Spark, or at `debug`
+— where the per-step log lines would cut it apart.
 
 ## Handling errors
 
@@ -635,7 +696,15 @@ thresher scores.csv -a grid                               # choose the algorithm
 thresher data.tsv --sep '\t' --no-header                  # tab-separated, no header row
 thresher wide.csv --score-column pred --label-column y    # pick columns by name
 thresher scores.csv -a ls -p n_jobs=4                     # pass algorithm parameters
+thresher big.csv --progress                               # watch a long run
+thresher scores.csv -v                                    # say what it is doing, on stderr
+thresher big.csv -a ls -q                                 # not even the slow warning
 ```
+
+`-v` reports each stage of the run and `-vv` each step inside it; `--verbosity` names the
+level outright and `-q` is shorthand for `--verbosity error`. All of it goes to stderr,
+along with the `--progress` bar, so the threshold on stdout is still the only thing a pipe
+sees.
 
 `thresher --list-algorithms` shows the algorithms and their aliases, and `thresher --help`
 documents every flag. Errors are reported in command-line terms rather than as Python
@@ -776,12 +845,15 @@ df = spark.read.parquet("s3://predictions/2026-08/")
 threshold = SparkThresher().optimize_threshold(df, score_col="probability", label_col="label")
 ```
 
-Nothing else about the calling code changes — `algorithm_params`, `labels` and `verbose`
+Nothing else about the calling code changes — `algorithm_params`, `labels` and `verbosity`
 mean what they mean everywhere else:
 
 ```python
-SparkThresher("hist", {"no_of_bins": 4096}, labels=(0, 1), verbose=True).optimize_threshold(df)
+SparkThresher("hist", {"no_of_bins": 4096}, labels=(0, 1), verbosity="info").optimize_threshold(df)
 ```
+
+There is no `progress_bar` option here, deliberately: the counting happens on executors,
+where nobody is watching a terminal.
 
 ### How the work is split
 

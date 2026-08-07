@@ -191,6 +191,7 @@ class TestConstructorOptions:
             algorithm="exact",
             allow_parallel=False,
             verbose=False,
+            verbosity="warning",
             progress_bar=False,
             algorithm_params={},
             labels=(0, 1),

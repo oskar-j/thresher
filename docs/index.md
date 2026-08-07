@@ -56,4 +56,5 @@ $ thresher scores.csv
 - [Getting started](getting-started.md) — install it and find your first threshold
 - [Algorithms](algorithms.md) — what each one does, and which to choose
 - [Command line](cli.md) — the `thresher` command
+- [Reporting and progress](logging.md) — what a run tells you, and how to watch a long one
 - [API reference](api/thresher.md) — every public class and function

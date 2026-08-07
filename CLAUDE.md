@@ -21,6 +21,10 @@ a 450 MB sdist with no wheel. It is there rather than in a group of its own so t
 tests run on every CI matrix job and count towards coverage; without them
 `src/thresher/spark.py` is uncovered and the 90% floor is missed.
 
+`tqdm` is in `dev` as well as being the `progress` extra, so the suite exercises the tqdm
+progress-bar path; `tests/test_progress.py` monkeypatches `progress._tqdm` to `None` to
+reach the built-in fallback, which is otherwise unreachable in a dev environment.
+
 `openpyxl` lives in the `dev` group and is mandatory for the tests: pandas needs it to read the `.xlsx` fixtures (`xlrd` 2.x cannot read `.xlsx` at all). Without the dev group, every test touching the medium fixture fails with ``ImportError: `Import openpyxl` failed``.
 
 ### Tests
@@ -28,7 +32,7 @@ tests run on every CI matrix job and count towards coverage; without them
 pytest, runnable from anywhere in the repo (0.3.0 moved the fixtures to paths resolved relative to `tests/conftest.py`; before that the suite only worked from inside the old `thresher/tests/`):
 
 ```bash
-uv run pytest                                   # 714 tests
+uv run pytest                                   # 804 tests
 uv run pytest tests/test_validation.py -v       # one module
 uv run pytest -k "sgd and separable"            # by expression
 uv run --isolated --python 3.14 --group dev pytest   # a specific interpreter
@@ -133,6 +137,47 @@ Three layers, each in its own file; a call flows strictly downward:
 - **`data_vol_thresh`** — since 0.5.0 this drives the "this will be slow" warning in `run_computations`, so editing a value changes when users are warned. It used to be the oracle's routing ladder; the oracle was removed in 0.5.0, having had nothing left to decide since `exact` arrived. There is no per-call algorithm choice any more: the algorithm is settled when a `Thresher` is built.
 - **`'auto'`** — no longer an algorithm. It named the oracle, and survives only as a synonym of `exact`, alongside `'default'` and `'default_heuristics'`, so existing calls keep working.
 - **The public algorithm list** — `get_supported_algorithms()` returns its keys.
+
+### Reporting (`log.py` and `progress.py`)
+
+0.8.0 replaced twenty-two `print()` calls behind `if verbose:` and two `logging` loggers
+with one path. `tests/test_logging.py::TestNothingPrints` walks the package's syntax trees
+and fails on a `print` anywhere in `src/`, so this is enforced rather than remembered.
+
+Four things in `log.py` are load-bearing:
+
+- **The level is checked at the call site, not at a sink.** Both `logging` and loguru hold
+  their level globally, and `Thresher(verbosity=...)` is per-instance - so the check runs
+  against a `ContextVar` in `log.is_enabled_for`, and `optimize_threshold` wraps its run in
+  `log.verbosity(...)`. That is also why a message below the level is free: it never
+  reaches loguru, so its arguments are never formatted. Do not "simplify" this into a sink
+  filter; two `Thresher` objects in one process would stop being able to differ, and
+  threads would read each other's setting.
+- **No handler is installed at import.** A library that adds a loguru sink takes over the
+  application's console. Records go wherever the application pointed loguru, and
+  `logger.disable('thresher')` works because nothing here bypasses the global logger.
+- **`_emit` passes `depth=2`.** Without it every record in the package would be credited to
+  `thresher.log`, and `logging.getLogger('thresher.dispatch')` - via
+  `propagate_to_logging` - would have nothing to select.
+- **`cli_logging` is a context manager, and removes only handler 0.** The command line is a
+  program and may configure loguru, but `thresher.cli.main` is importable and the suite
+  calls it that way. It puts an equivalent default handler back on the way out, and its
+  sink is a proxy resolving `sys.stderr` at write time - a handler holding the object would
+  either outlive a swapped stream or write past it, and both `click.testing` and pytest
+  swap it.
+
+`progress.py` picks between tqdm and the built-in bar behind one `make_progress(...)`
+returning a `ProgressBar`. Three rules there:
+
+- **A bar goes to stderr.** stdout is the command line's answer. The built-in bar wrote to
+  stdout until 0.8.0, which went unnoticed only because the CLI had no `--progress`.
+- **tqdm is given a `bar_format` shaped like the built-in bar** - percentage to one decimal
+  place, then the counts. That is what makes installing the extra a change of appearance
+  only, and what lets one assertion cover both. The two still differ in *when* they redraw:
+  tqdm coalesces frames arriving within 0.1 s.
+- **Where no bar is drawn**: from workers (`mp`, `ray`), from Spark, at DEBUG, and from
+  `sgd`, which has no step count to report a proportion of. The DEBUG rule used to be the
+  genetic solver's alone and announced itself with a printed warning.
 
 ### Exceptions
 
@@ -247,9 +292,9 @@ Seeding makes failures reproducible; it does not make a weak assertion strong. `
 
 ### Solver signature convention
 
-All solvers expose `run(scores, actual_classes, verbose, progress_bar, alg_options) -> float`, with two deliberate exceptions handled by branches in `run_computations()`:
+All solvers expose `run(scores, actual_classes, progress_bar, alg_options) -> float`, with two deliberate exceptions handled by branches in `run_computations()`:
 
-- `linear.compute.run()` takes **no** `alg_options` (signature is `(scores, actual_classes, verbose, progress_bar)`), and has a separate `run_parallel(scores, actual_classes, verbose, n_jobs)` selected when `allow_parallel` is set and `n_jobs != 1`.
+- `linear.compute.run()` takes **no** `alg_options` (signature is `(scores, actual_classes, progress_bar)`), and has a separate `run_parallel(scores, actual_classes, n_jobs)` selected when `allow_parallel` is set and `n_jobs != 1`.
 - `grid.compute.run_stoch()` is a thin wrapper passing `stochastic=True` into `grid.compute.run()` — the grid and stochastic-grid "algorithms" share one implementation.
 
 ## Adding a new algorithm
@@ -257,7 +302,7 @@ All solvers expose `run(scores, actual_classes, verbose, progress_bar, alg_optio
 Four edits, all required:
 
 1. Add an entry to `available_algorithms` in `algorithm.py` (set `data_vol_thresh=None` unless the oracle should route on it).
-2. Create `src/thresher/algs/<name>/compute.py` with a `run(...)` matching the convention above, plus `__init__.py`. Annotate it — `mypy --strict` covers `src/` and will reject untyped defs. Declare a `known_params` frozenset there even if it is empty, and add it to `dispatch.KNOWN_PARAMS`; a test asserts every registered algorithm has an entry.
+2. Create `src/thresher/algs/<name>/compute.py` with a `run(...)` matching the convention above, plus `__init__.py`. Report through `thresher.log` - `print()` fails a test - and draw any progress bar through `thresher.progress.make_progress`. Annotate it — `mypy --strict` covers `src/` and will reject untyped defs. Declare a `known_params` frozenset there even if it is empty, and add it to `dispatch.KNOWN_PARAMS`; a test asserts every registered algorithm has an entry.
 3. In `oracle.py`: import the compute module, add a module-level constant, and add a branch to `run_computations()`.
 4. Nothing in `tests/` hardcodes the algorithm count — `test_supported_algorithms` compares against `available_algorithms` itself — but `tests/test_regressions.py::ALL_ALGORITHMS` and the parametrised lists in `tests/test_optimization.py` should gain the new id so it is actually exercised.
 

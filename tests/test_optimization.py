@@ -110,8 +110,8 @@ class TestSlowInputWarning:
     """Crossing an algorithm's `data_vol_thresh` warns rather than refusing.
 
     The thresholds are order-of-magnitude guidance measured on one machine, so a caller
-    may well have good reason to wait. Warning through `logging` rather than `warnings`
-    means it is silenced with ordinary logging configuration.
+    may well have good reason to wait. It is logged rather than `warnings.warn`-ed, so it
+    is silenced by asking for less - `set_verbosity('error')` - rather than by a filter.
     """
 
     @staticmethod
@@ -119,43 +119,59 @@ class TestSlowInputWarning:
         scores = [i / count for i in range(count)]
         return scores, [-1] * (count // 2) + [1] * (count - count // 2)
 
-    def test_warns_past_the_threshold(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_warns_past_the_threshold(self, logs: list[str]) -> None:
         threshold = algorithm.available_algorithms["ls"].data_vol_thresh
         scores, actual_classes = self._rows(threshold + 200)
 
-        with caplog.at_level("WARNING", logger="thresher.dispatch"):
-            thresher.Thresher(algorithm="ls").optimize_threshold(scores, actual_classes)
+        thresher.Thresher(algorithm="ls").optimize_threshold(scores, actual_classes)
 
-        assert "Linear search is likely to be slow" in caplog.text
-        assert f"{threshold:,}" in caplog.text, "the message should say where the limit is"
-        assert "exact" in caplog.text, "and point at the faster alternative"
+        text = "".join(logs)
+        assert "Linear search is likely to be slow" in text
+        assert f"{threshold:,}" in text, "the message should say where the limit is"
+        assert "exact" in text, "and point at the faster alternative"
 
-    def test_silent_below_the_threshold(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_it_is_a_warning_and_so_survives_the_default_level(self, logs: list[str]) -> None:
+        """The one thing this package says without being asked, so it has to be a WARNING.
+
+        Nothing sets a level here: the default is `'warning'`, and a message logged any
+        lower would be dropped before it reached a sink.
+        """
+        scores, actual_classes = self._rows(algorithm.available_algorithms["ls"].data_vol_thresh + 200)
+
+        thresher.Thresher(algorithm="ls").optimize_threshold(scores, actual_classes)
+
+        assert [line for line in logs if line.startswith("WARNING")]
+
+    def test_asking_for_less_silences_it(self, logs: list[str]) -> None:
+        """What the message itself tells you to do."""
+        scores, actual_classes = self._rows(algorithm.available_algorithms["ls"].data_vol_thresh + 200)
+
+        thresher.Thresher(algorithm="ls", verbosity="error").optimize_threshold(scores, actual_classes)
+
+        assert logs == []
+
+    def test_silent_below_the_threshold(self, logs: list[str]) -> None:
         scores, actual_classes = self._rows(200)
 
-        with caplog.at_level("WARNING", logger="thresher.dispatch"):
-            thresher.Thresher(algorithm="ls").optimize_threshold(scores, actual_classes)
+        thresher.Thresher(algorithm="ls").optimize_threshold(scores, actual_classes)
 
-        assert caplog.text == ""
+        assert logs == []
 
-    def test_the_default_algorithm_does_not_warn_on_ordinary_data(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_the_default_algorithm_does_not_warn_on_ordinary_data(self, logs: list[str]) -> None:
         # exact is comfortable well past where the others complain, which is the point.
         scores, actual_classes = self._rows(20_000)
 
-        with caplog.at_level("WARNING", logger="thresher.dispatch"):
-            thresher.Thresher().optimize_threshold(scores, actual_classes)
+        thresher.Thresher().optimize_threshold(scores, actual_classes)
 
-        assert caplog.text == ""
+        assert logs == []
 
-    def test_it_warns_rather_than_refusing(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_it_warns_rather_than_refusing(self, logs: list[str]) -> None:
         threshold = algorithm.available_algorithms["ls"].data_vol_thresh
         scores, actual_classes = self._rows(threshold + 200)
 
-        with caplog.at_level("WARNING", logger="thresher.dispatch"):
-            result = thresher.Thresher(algorithm="ls").optimize_threshold(scores, actual_classes)
+        result = thresher.Thresher(algorithm="ls").optimize_threshold(scores, actual_classes)
 
+        assert logs, "the warning is what makes this the interesting case"
         assert isinstance(result, float), "the run must still complete"
 
     def test_every_algorithm_declares_a_threshold(self) -> None:
