@@ -9,6 +9,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-25
+
+Eight assertions that could not fail, found by mutation testing in the 0.6.0 audit
+([#38]) and replaced here. Nothing in the package changes; what changes is what the suite
+is able to notice. Each mutation from the issue was re-applied against the new tests and
+fails them, where the old suite passed every one.
+
+### Changed
+
+- **`TestBoundedMemory` measures through `Thresher`.** It called `histogram.run` directly
+  with lists, so it proved that the solver allocates little and nothing about what a
+  caller pays - `optimize_threshold` copied both arguments on the way in for four releases
+  ([#30]) while it stayed green. It now measures the round trip a user makes, and
+  reintroducing that copy fails it.
+- **The parallel linear search is held to the sequential answer, and to the right one.**
+  `test_linear_search_in_parallel` asserted that the result lay inside the score range,
+  which every candidate the search scores does; the least accurate of them would have
+  passed. It now has to equal the sequential result and separate the data perfectly.
+- **`-a` has to reach the solver it names.** `test_every_algorithm_is_selectable` compared
+  the printed number to itself. It now runs at `-v` and requires the report to name the
+  algorithm that ran, and the answer to be one of the thresholds that separate the four
+  rows. The sampling solvers read all of the data for that, since at four rows their
+  default ratios sample one.
+- **`-p` has to arrive, and typed.** `test_algorithm_params_are_passed_through` asserted a
+  non-negative answer on scores confined to `[0.1, 0.7]`, and passed with the option
+  dropped. It now requires the parallel path's own report, and a second test asks for a
+  two-point grid and gets the answer only that grid can give.
+- **`reshuffle` is pinned to what it computes.** `assert 0.0 <= result <= 1.0` could not
+  fail for a grid laid over the data. Reshuffling everything per candidate now has to
+  return the exhaustive grid's answer; the draw-count tests from 0.6.4 already prove the
+  sampling happens.
+- **The sgd step cap has tests that reach it.** The cap at half the score range cannot
+  bind in a default run - the first step is 5% of the range and only decays - and
+  deleting it passed all 27 sgd tests. A comment credited
+  `test_sgd_converges_near_the_optimum` with guarding it; that comment is corrected, and
+  `TestSgdStepCap` reaches the cap with `step_ratio=10`, on a deterministic curve and
+  through the public API.
+- **`stoch_ratio`'s documented effect is asserted over ten runs.**
+  `test_sgd_sample_ratio_is_configurable` asserted range membership, which `sgd` clamps
+  to. A single run cannot show the lever either: at the default ratio the median run is
+  already within 1% error, and it is the tail that is bad. The worst of ten runs at 0.5
+  is now held under 3%, where it measured 1.4% at most over 30 trials and exceeded 2% in
+  28 of 30 at the default.
+- **The medium fixture is judged on accuracy given up, per algorithm.** The band
+  `(0.40, 0.65)` accepted 0.6499, which classifies 77.4% against the optimum's 89.2%.
+  Each algorithm now has to come within a tolerance of the exact optimum's accuracy: none
+  for `exact` and `ls`, half a point for `hist` and `grid`, five points for `gen` and
+  `sgrid`, and eight for `sgrid` with `reshuffle` - each set from the worst of 200 seeds
+  with headroom, so a failure is a change in the solver rather than in the draw.
+- **The pre-commit mypy hook checks the whole tree, not the staged files.** Handed only
+  the staged test files, mypy cannot see the package - it is not installed in the hook's
+  own environment - and the hook's default `--ignore-missing-imports` turns every solver
+  result into `Any`, so this release, the first to stage no source file, failed its own
+  commit hook on a `return` that `make check` had passed moments before.
+
+Writing the step-cap test turned up a separate defect in the same solver: the walk's
+direction resets to upward after every improving step, so it cannot leave its starting
+point when the optimum lies below the mean score. Filed as [#51] and left for a release
+of its own, since it changes the solver's answers.
+
+[#38]: https://github.com/oskar-j/thresher/issues/38
+[#51]: https://github.com/oskar-j/thresher/issues/51
+
 ## [0.8.0] - 2026-08-06
 
 Proper logging. Everything this package has to say now goes through
@@ -1245,7 +1308,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/oskar-j/thresher/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/oskar-j/thresher/compare/v0.7.3...v0.8.0
 [0.7.3]: https://github.com/oskar-j/thresher/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/oskar-j/thresher/compare/v0.7.1...v0.7.2

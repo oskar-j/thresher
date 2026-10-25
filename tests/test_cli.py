@@ -41,10 +41,23 @@ def test_reads_stdin(runner: CliRunner) -> None:
 
 @pytest.mark.parametrize("algorithm_name", ["exact", "hist", "ls", "grid", "sgrid", "gen", "sgd", "auto"])
 def test_every_algorithm_is_selectable(runner: CliRunner, basic_csv: Path, algorithm_name: str) -> None:
-    result = runner.invoke(main, [str(basic_csv), "-a", algorithm_name])
+    """`-a` has to reach the solver it names, and that solver has to answer for this data.
+
+    Until 0.8.1 this compared the printed number to itself (#38). Now `-v` has to name the
+    algorithm that ran, and the answer has to be one of the thresholds that separate the
+    four rows. The three sampling solvers are made to read all of the data for that: at
+    four rows their default ratios sample a single one, which says nothing about the
+    other three.
+    """
+    args = [str(basic_csv), "-a", algorithm_name, "-v"]
+    if algorithm_name in ("sgrid", "gen", "sgd"):
+        args += ["-p", "stoch_ratio=1.0"]
+
+    result = runner.invoke(main, args)
 
     assert result.exit_code == 0, result.output
-    assert float(result.output.strip()) == pytest.approx(float(result.output.strip()))
+    assert algorithm.retrieve_by_alias(algorithm_name).full_name in result.stderr
+    assert 0.3 <= float(result.stdout.strip()) < 0.4
 
 
 def test_custom_labels(runner: CliRunner, tmp_path: Path) -> None:
@@ -78,10 +91,30 @@ def test_columns_selected_by_name(runner: CliRunner, tmp_path: Path) -> None:
 
 
 def test_algorithm_params_are_passed_through(runner: CliRunner, basic_csv: Path) -> None:
-    result = runner.invoke(main, [str(basic_csv), "-a", "ls", "-p", "n_jobs=2"])
+    """`-p n_jobs=2` has to reach linear search, which says so when it runs in parallel.
 
-    assert result.exit_code == 0
-    assert float(result.output.strip()) >= 0.0
+    Asserting that the answer was non-negative proved nothing, since the same command
+    without the option prints the same answer (#38). The parallel path announces itself
+    and the sequential one does not, so the report is what tells the two apart.
+    """
+    result = runner.invoke(main, [str(basic_csv), "-a", "ls", "-p", "n_jobs=2", "-v"])
+
+    assert result.exit_code == 0, result.output
+    assert "running in parallel" in result.stderr
+    assert float(result.stdout.strip()) == pytest.approx(0.35)
+
+
+def test_a_param_value_arrives_as_a_number(runner: CliRunner, basic_csv: Path) -> None:
+    """The value has to reach the solver too, and typed - not only the key.
+
+    A grid of `10**0 + 1` points has only the two ends of the data to choose from and
+    picks the lower one, where the default grid of 101 points lands between 0.3 and 0.4.
+    The coarse answer is reachable only if `0` arrived as an integer exponent.
+    """
+    coarse = runner.invoke(main, [str(basic_csv), "-a", "grid", "-p", "no_of_decimal_places=0"])
+
+    assert coarse.exit_code == 0, coarse.output
+    assert float(coarse.stdout.strip()) == pytest.approx(0.1)
 
 
 def test_list_algorithms(runner: CliRunner) -> None:

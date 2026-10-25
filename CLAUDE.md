@@ -32,13 +32,13 @@ reach the built-in fallback, which is otherwise unreachable in a dev environment
 pytest, runnable from anywhere in the repo (0.3.0 moved the fixtures to paths resolved relative to `tests/conftest.py`; before that the suite only worked from inside the old `thresher/tests/`):
 
 ```bash
-uv run pytest                                   # 804 tests
+uv run pytest                                   # 817 tests
 uv run pytest tests/test_validation.py -v       # one module
 uv run pytest -k "sgd and separable"            # by expression
 uv run --isolated --python 3.14 --group dev pytest   # a specific interpreter
 ```
 
-Several solvers are randomized internally, so returned thresholds vary between runs and the assertions check a band rather than an exact value. Since 0.7.3 an autouse fixture seeds `random` before every test, so the suite itself is reproducible and order-independent - see "Stochastic tests are seeded" below for why that was needed and for what it does *not* fix. A stochastic test that starts failing is therefore a real change in behaviour, not the weather; suspect a fitness/selection regression rather than a too-tight assertion.
+Several solvers are randomized internally, so returned thresholds vary between runs and the assertions check a band, or the accuracy given up against `exact`, rather than an exact value. Since 0.7.3 an autouse fixture seeds `random` before every test, so the suite itself is reproducible and order-independent - see "Stochastic tests are seeded" below for why that was needed and for what it does *not* fix. A stochastic test that starts failing is therefore a real change in behaviour, not the weather; suspect a fitness/selection regression rather than a too-tight assertion.
 
 ### Documentation
 
@@ -79,7 +79,7 @@ uv run mypy                          # strict, over src/ and tests/
 
 Use **`make check`**, which runs `git add --intent-to-add .` first so new files are visible to the hooks, then runs them. `make install` also installs the git hook, so commits are checked whatever you type. Reach for the bare `pre-commit` command only if you know every file you care about is already tracked.
 
-The mypy hook resolves its own environment from `additional_dependencies` in `.pre-commit-config.yaml`, independently of `pyproject.toml`. A new runtime dependency has to be added in both places: absent from the hook's list, an imported library's types vanish and every function touched by its decorators fails `strict` with "Untyped decorator". Locally `uv run mypy` will still pass, because that uses the project environment.
+The mypy hook resolves its own environment from `additional_dependencies` in `.pre-commit-config.yaml`, independently of `pyproject.toml`. It also checks the whole tree rather than the staged files (`pass_filenames: false`, since 0.8.1): handed only staged test files, mypy could not see the package - it is not installed in the hook's environment - and with the hook's default `--ignore-missing-imports` read every solver result as `Any`, so the first tests-only release commit failed on a `return` that `make check` had just passed. A new runtime dependency has to be added in both places: absent from the hook's list, an imported library's types vanish and every function touched by its decorators fails `strict` with "Untyped decorator". Locally `uv run mypy` will still pass, because that uses the project environment.
 
 `[tool.mypy]` deliberately sets no `python_version`. Pinning it to 3.10 makes mypy fail while parsing numpy's bundled stubs, which use 3.12+ `type` statements. The CI matrix is what actually proves 3.10 compatibility.
 
@@ -267,7 +267,7 @@ Two things there are load-bearing:
 
 Not copying costs some CPU: iterating an ndarray boxes each element where a list hands over an existing reference, which measured ~1.3× on `hist` at 500,000 rows against roughly 700× less memory. That is the trade, and it is the right way round for the algorithm whose selling point is the memory.
 
-Three solvers used to ask `if not scores:`, which raises for an array of more than one element. They count instead. `tests/test_array_inputs.py` covers all of this; note that `tests/test_histogram.py::TestBoundedMemory` **cannot**, because it calls `histogram.run` directly with lists and so never reaches the interface where the copy was - which is exactly why the bug survived a release that measured the very property it broke.
+Three solvers used to ask `if not scores:`, which raises for an array of more than one element. They count instead. `tests/test_array_inputs.py` covers all of this. `tests/test_histogram.py::TestBoundedMemory` measures through `Thresher` as well since 0.8.1; until then it called `histogram.run` directly with lists and so never reached the interface where the copy was - which is exactly why the bug survived a release that measured the very property it broke (#38).
 
 ### Why `exact` supersedes the rest
 
@@ -289,6 +289,10 @@ Two subtleties in that file worth not "simplifying" away. Runs of equal scores a
 An autouse fixture seeds `random` before every test. Four solvers sample through that module, so without it a test asserting an outcome from one of them is really asserting something about wherever the generator was left by the tests before it - order-dependent, and silently so. 0.7.3 changed how many values the genetic solver draws and nothing else about `sgrid`, and that alone turned an unrelated `sgrid` assertion red.
 
 Seeding makes failures reproducible; it does not make a weak assertion strong. `TestScoresOutsideTheUnitInterval` demanded exact accuracy from `sgrid` scoring each candidate against 5 of 100 rows, and failed for 43 of 200 starting states - seeding would only have picked a lucky one. Those tests pass `stoch_ratio=1.0` now, because what they are about is where the grid is laid, not how well a 5-row subsample represents 100 rows. If you find yourself choosing a seed to make a stochastic test pass, the assertion is the problem.
+
+### Assert the answer, not its container
+
+0.8.1 (#38) replaced eight assertions that could not fail: a printed number compared to itself, a range that every candidate satisfies by construction, a non-negative check on data that is all positive, a memory measurement taken below the point where the copy was. Each had passed with the code it guarded mutated away - the parallel search picking its *worst* candidate, `reshuffle` reusing one sample, the sgd step cap deleted, `-p` dropped on the floor. The replacement each time asserts what the test's name claims: the parallel result equals the sequential one and separates the data, `-v` names the algorithm `-a` asked for, a parameter produces the answer only its value can. Where the right answer is stochastic, the assertion is accuracy given up against `exact` with a tolerance set from the worst of 200 seeds, not a band on the threshold axis - `tests/test_optimization.py::test_medium_dataset` is the model. Before merging a new test, ask what mutation it would catch; if nothing comes to mind, it is a smoke test, and should say so rather than assert.
 
 ### Solver signature convention
 
@@ -333,6 +337,7 @@ Coverage is better than it was, but still rests on one real-world fixture plus s
 ### Accuracy
 
 - **`sgd` remains the least accurate solver**, though 0.3.1 narrowed the gap by a wide margin (see the CHANGELOG for the numbers). What is left is inherent to scoring each step against a 5% subsample rather than a defect: the fewer samples of the rarer class a subsample contains, the less it says about where the boundary lies. Heavily imbalanced data at small volumes is still its weak spot - on a 2,000-row input with 5% positives, worst-case error across 20 seeds is ~0.30 even though the mean is ~0.04. The oracle selects `sgd` for every input above 50,000 rows, where subsamples are large enough for this to matter less, but it is worth knowing before choosing `algorithm='sgd'` by hand.
+- **`sgd` cannot walk below its starting point** (#51, found at 0.8.1, unfixed). Its direction resets to upward after every improving step, so when the optimum lies below the mean score - the positive class in the majority - it returns the mean, at any `stoch_ratio`: a boundary at 0.30 on separable data gives 20% error with the whole dataset read on every step. Every sgd fixture in the suite puts the boundary *above* the mean, which is why it had never been seen.
 - `sgd` exposes `stoch_ratio` since 0.4.4, which is the lever against the weakness above: on 2,000 rows with 5% positives, raising it from 0.05 to 0.5 took mean error from 0.0394 to 0.0035 and worst-case from 0.302 to 0.013. The default is unchanged, so the weakness is still there out of the box - it is a trade the caller now gets to make, not one made for them.
 
 - Nothing outstanding. The silent truncation on mismatched input lengths was fixed in 0.4.4: `validate_lengths()` runs alongside `validate_actual_classes()` in `run_computations`, so no solver can be reached with ragged input. The `zip(..., strict=False)` calls in the solvers stay as they are - by the time a solver runs, the lengths have already been checked, and making them strict would only duplicate the guard further from where the error can be explained.
