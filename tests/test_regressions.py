@@ -356,6 +356,103 @@ class TestSgdStepScalesWithTheData:
         assert abs(result - starting_point) < abs(max(scores) - starting_point) / 2
 
 
+class TestSgdWalksDownhill:
+    """The walk reaches an optimum below the mean score, fixed in 0.8.2 (#51).
+
+    The direction used to be recomputed as `abs(gradient) * (1 - alpha)` and negated only
+    after a worsening step, so the walk headed *up* after every step that helped -
+    whichever way that step had gone. Towards an optimum above the mean that is the right
+    walk, and every sgd fixture in this file put the boundary there. Towards one below it,
+    each improving step down was followed by a step back up, and the walk hovered just
+    above where it started for its whole budget and returned the mean: a boundary at 0.30
+    on separable data gave 20% error with the whole dataset read on every step.
+    """
+
+    @pytest.mark.parametrize("boundary", [0.3, 0.15])
+    def test_sgd_reaches_an_optimum_below_the_mean(self, skewed: DatasetFactory, boundary: float) -> None:
+        """The mirror image of `test_sgd_reaches_an_optimum_far_from_the_mean`, at the default ratio.
+
+        Over 100 seeds the worst run lands within 1.8%. The old rule's median was 19% at
+        0.30 and 33% at 0.15 - but not its minimum: a step down that sampling noise called
+        worse was one the old rule followed, and one seed in ten got under 10% at 0.30
+        that way, this suite's seed among them. So this guards the accuracy a caller
+        sees; the next test is the one that pins the rule.
+        """
+        scores, actual_classes = skewed(8000, boundary, seed=int(boundary * 100))
+
+        result = thresher.Thresher(algorithm="sgd").optimize_threshold(scores, actual_classes)
+
+        assert _error_rate(result, scores, actual_classes) < 0.10
+
+    @pytest.mark.parametrize("boundary", [0.3, 0.15])
+    def test_reading_everything_leaves_the_old_rule_no_way_down(
+        self, skewed: DatasetFactory, boundary: float
+    ) -> None:
+        """`stoch_ratio=1.0` removes the noise, and with it the old rule's only way down.
+
+        It then returned the mean on every seed - 20.1% error at 0.30, 35.5% at 0.15 -
+        where the walk now lands within 0.4% in both cases. Deterministic, so the bound
+        is tight.
+        """
+        scores, actual_classes = skewed(8000, boundary, seed=int(boundary * 100))
+
+        result = thresher.Thresher(algorithm="sgd", algorithm_params={"stoch_ratio": 1.0}).optimize_threshold(
+            scores, actual_classes
+        )
+
+        assert _error_rate(result, scores, actual_classes) < 0.02
+
+    def test_the_walk_is_the_same_in_both_directions(self) -> None:
+        """On a V-shaped error curve the minimum is found wherever it sits.
+
+        Deterministic, so the two can be held to the same precision: from 0.5 with the
+        default step and decay, 200 steps leave a final step near 0.007, and the closest
+        pass to the minimum is within that.
+        """
+
+        def descend_to(minimum: float) -> float:
+            def curve(point: float, previous: float) -> tuple[float, float]:
+                error = abs(point - minimum)
+                return error, previous - error
+
+            return sgd_solver(
+                curve,
+                starting_point=0.5,
+                gradient=0.05,
+                num_of_iters=200,
+                stop_thresh=0.001,
+                alpha=0.01,
+                lower_bound=0.0,
+                upper_bound=1.0,
+            )
+
+        assert descend_to(0.7) == pytest.approx(0.7, abs=0.01)
+        assert descend_to(0.3) == pytest.approx(0.3, abs=0.01), "the old rule returned the start, 0.5"
+
+    def test_an_improving_step_keeps_its_direction(self) -> None:
+        """Error falling all the way to the lower bound: the walk has to follow it there.
+
+        The old rule turned back up after every improving step, so it never got further
+        than one step below where it started.
+        """
+
+        def slope(point: float, previous: float) -> tuple[float, float]:
+            return point, previous - point
+
+        best = sgd_solver(
+            slope,
+            starting_point=0.5,
+            gradient=0.05,
+            num_of_iters=200,
+            stop_thresh=0.001,
+            alpha=0.01,
+            lower_bound=0.0,
+            upper_bound=1.0,
+        )
+
+        assert best == 0.0
+
+
 class TestSgdStepCap:
     """No single step may exceed half the score range.
 

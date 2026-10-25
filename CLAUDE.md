@@ -32,7 +32,7 @@ reach the built-in fallback, which is otherwise unreachable in a dev environment
 pytest, runnable from anywhere in the repo (0.3.0 moved the fixtures to paths resolved relative to `tests/conftest.py`; before that the suite only worked from inside the old `thresher/tests/`):
 
 ```bash
-uv run pytest                                   # 817 tests
+uv run pytest                                   # 824 tests
 uv run pytest tests/test_validation.py -v       # one module
 uv run pytest -k "sgd and separable"            # by expression
 uv run --isolated --python 3.14 --group dev pytest   # a specific interpreter
@@ -330,15 +330,14 @@ Tags from 0.2.0 onward use the standard `v0.2.0` form. The three historical tags
 
 ## Known issues
 
-The crashes and the `sgd` out-of-range results were fixed in 0.2.2; the unhelpful error paths were fixed in 0.2.3. All are covered by `tests/test_regressions.py` and `tests/test_validation.py`. What remains below is unfixed and reproduced against 0.3.0.
+The crashes and the `sgd` out-of-range results were fixed in 0.2.2; the unhelpful error paths were fixed in 0.2.3. The `sgd` walk's inability to descend below the mean score was fixed in 0.8.2 (#51): its direction was recomputed from `abs(gradient)` and so reset to upward after every improving step. It went unseen because every sgd fixture put the boundary above the mean; `tests/test_regressions.py::TestSgdWalksDownhill` now holds both directions to the same precision on a synthetic curve, and a solver fixture should be probed on the shape its tests never use before a change to it is called done. All are covered by `tests/test_regressions.py` and `tests/test_validation.py`. What remains below is unfixed and reproduced against 0.3.0.
 
 Coverage is better than it was, but still rests on one real-world fixture plus synthetic separable data. The regression modules parametrise across every algorithm and several sizes; `tests/test_optimization.py` is the only place real data is used.
 
 ### Accuracy
 
-- **`sgd` remains the least accurate solver**, though 0.3.1 narrowed the gap by a wide margin (see the CHANGELOG for the numbers). What is left is inherent to scoring each step against a 5% subsample rather than a defect: the fewer samples of the rarer class a subsample contains, the less it says about where the boundary lies. Heavily imbalanced data at small volumes is still its weak spot - on a 2,000-row input with 5% positives, worst-case error across 20 seeds is ~0.30 even though the mean is ~0.04. The oracle selects `sgd` for every input above 50,000 rows, where subsamples are large enough for this to matter less, but it is worth knowing before choosing `algorithm='sgd'` by hand.
-- **`sgd` cannot walk below its starting point** (#51, found at 0.8.1, unfixed). Its direction resets to upward after every improving step, so when the optimum lies below the mean score - the positive class in the majority - it returns the mean, at any `stoch_ratio`: a boundary at 0.30 on separable data gives 20% error with the whole dataset read on every step. Every sgd fixture in the suite puts the boundary *above* the mean, which is why it had never been seen.
-- `sgd` exposes `stoch_ratio` since 0.4.4, which is the lever against the weakness above: on 2,000 rows with 5% positives, raising it from 0.05 to 0.5 took mean error from 0.0394 to 0.0035 and worst-case from 0.302 to 0.013. The default is unchanged, so the weakness is still there out of the box - it is a trade the caller now gets to make, not one made for them.
+- **`sgd` remains the least accurate solver**, though 0.3.1 narrowed the gap by a wide margin (see the CHANGELOG for the numbers). What is left is inherent to scoring each step against a 5% subsample rather than a defect: the fewer samples of the rarer class a subsample contains, the less it says about where the boundary lies. Heavily imbalanced data at small volumes is still its weak spot - on a 2,000-row input with 5% positives, worst-case error across 20 seeds is ~0.035 against a mean of ~0.008 (since 0.8.2; it was ~0.30 against ~0.04 before the direction fix, so most of that tail was the rule rather than the sampling). `exact` is the default, so this only matters when `algorithm='sgd'` is chosen by hand.
+- `sgd` exposes `stoch_ratio` since 0.4.4, which is the lever against the weakness above: on 2,000 rows with 5% positives, raising it from 0.05 to 0.5 takes mean error from 0.008 to 0.003 and worst-case from 0.035 to 0.005 (measured at 0.8.2; at 0.4.4 the same lever read 0.0394 to 0.0035 and 0.302 to 0.013). The default is unchanged, so the weakness is still there out of the box - it is a trade the caller now gets to make, not one made for them.
 
 - Nothing outstanding. The silent truncation on mismatched input lengths was fixed in 0.4.4: `validate_lengths()` runs alongside `validate_actual_classes()` in `run_computations`, so no solver can be reached with ragged input. The `zip(..., strict=False)` calls in the solvers stay as they are - by the time a solver runs, the lengths have already been checked, and making them strict would only duplicate the guard further from where the error can be explained.
 
