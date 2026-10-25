@@ -117,7 +117,8 @@ def sgd_solver(
             best_point, best_eval = new_point, evaluation
 
         # The step size follows a fixed decay schedule, and only its *direction* comes
-        # from the gain: a move that made things worse turns the walk around.
+        # from the gain: a move that made things worse turns the walk around, and a move
+        # that helped is followed in the same direction.
         #
         # It used to be scaled by the relative gain instead, which compounded: as soon as
         # progress slowed the step shrank, which slowed progress further, until a step so
@@ -126,7 +127,15 @@ def sgd_solver(
         # check below reported that as convergence. On data whose optimum sits far from
         # the mean it never got close - a threshold that should have been 0.95 came back
         # as 0.56, mis-classifying 39% of samples while reporting success.
-        gradient = abs(gradient) * (1.0 - alpha)
+        #
+        # Until 0.8.2 the sign was dropped here too - `abs(gradient)` before the decay -
+        # so the walk headed *up* after every step that helped, whichever way that step
+        # had gone, and down only after one that hurt. Towards an optimum above the mean
+        # that is the right walk. Towards one below it, every improving step down was
+        # followed by a step back up, and the walk hovered just above where it started
+        # for its whole budget, returning the mean (#51). Keeping the sign makes the two
+        # directions the same walk, mirrored.
+        gradient *= 1.0 - alpha
         if gain < 0:
             gradient = -gradient
 

@@ -277,8 +277,10 @@ at roughly 4.3 regardless, so on scores spanning thousands the walk stopped shor
 * `stoch_ratio` (default: 0.05) - fraction of the data each step reads. Raising this is the
 lever against this algorithm's weak spot: when one class is rare, a small subsample carries
 little information about where the boundary lies. On 2,000 rows with 5% positives, going
-from `0.05` to `0.5` took the mean error from `0.0394` to `0.0035` and the worst case from
-`0.302` to `0.013`, at the cost of reading ten times as much data per step
+from `0.05` to `0.5` takes the mean error over 20 seeds from `0.008` to `0.003` and the
+worst case from `0.035` to `0.005`, at the cost of reading ten times as much data per step.
+Before 0.8.2 fixed the walk's direction rule the same lever took the worst case from
+`0.302` to `0.013`, which is how much of that tail was the rule rather than the sampling
 
 ### Evolutionary algorithm
 
@@ -345,11 +347,11 @@ exists", not merely "did well".
 |---|---|---|---|---|---|---|
 | `exact` | **100.00%** | **100.00%** | **100.00%** | **1 ms** | **O(n log n)** | **O(d)** |
 | `hist` | 99.99% | 99.99% | 99.98% | 1 ms | O(n + k) | **O(k)** |
-| `ls` | 100.00% | 100.00% | 100.00% | 221 ms | O(n²) | O(n) |
+| `ls` | 100.00% | 100.00% | 100.00% | 214 ms | O(n²) | O(n) |
 | `grid` | 99.83% | 99.99% | 99.92% | 11 ms | O(c·n) | O(c) |
 | `sgrid` | 99.57% | 97.81% | 99.62% | 1 ms | O(c·r·n) | O(r·n) |
-| `gen` | 99.62% | 98.23% | 88.64% | 117 ms | O(e·r·n) | O(r·n) |
-| `sgd` | 99.54% | 97.01% | 88.37% | 12 ms | O(i·r·n) | O(r·n) |
+| `gen` | 99.82% | 98.10% | 99.31% | 105 ms | O(e·r·n) | O(r·n) |
+| `sgd` | 99.55% | 98.60% | 98.34% | 8 ms | O(i·r·n) | O(r·n) |
 
 Where _n_ is the number of scores, _d_ the number of **distinct** scores (never more than
 _n_, and far fewer for rounded probabilities), _c_ the grid candidates
@@ -396,10 +398,11 @@ What to take from this:
 - **The approximations are now strictly dominated**: slower *and* less accurate than
   `exact`. They stay selectable, and remain interesting if you want to watch how a
   particular search behaves, but there is no longer an accuracy/speed trade to make.
-- **`gen` and `sgd` struggle when one class is rare.** Both read only a small random
-  subsample per evaluation, and the rarer the minority class, the less any subsample says
-  about where the boundary lies. That weakness was the strongest argument for having an
-  exact algorithm which stays cheap at scale.
+- **`gen` and `sgd` are the noisy ones.** Both read only a small random subsample per
+  evaluation, so their answer varies from run to run, and the rarer the minority class
+  the less any one subsample says about where the boundary lies - the imbalanced column
+  is the averaged cost of that, and a single bad draw can cost far more. Reading more rows
+  (`stoch_ratio`) buys it back; `exact` reads them all, once, and is cheaper anyway.
 
 Timings come from one laptop and are only meaningful relative to one another. Reproduce
 the whole table with:

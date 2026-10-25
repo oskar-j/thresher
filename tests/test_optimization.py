@@ -28,6 +28,7 @@ def accuracy_of(threshold: float, scores: list[float], actual_classes: list[int]
         pytest.param("hist", {}, 0.005, id="hist"),
         pytest.param("linear", {}, 0.0, id="linear"),
         pytest.param("sim", {}, 0.05, id="genetic"),
+        pytest.param("sgd", {}, 0.08, id="sgd"),
         pytest.param("grid", {}, 0.005, id="grid"),
         pytest.param("sgrid", {"no_of_decimal_places": 2, "stoch_ratio": 0.10}, 0.05, id="sgrid"),
         pytest.param(
@@ -51,9 +52,10 @@ def test_medium_dataset(
     0.8.1 this asserted a band of `(0.40, 0.65)` around the optimum, and on this fixture
     0.6499 classifies 77.4% against the optimum's 89.2%: an 11.7-point loss that passed
     (#38). The exact solvers get no slack; the two deterministic approximations get a bin
-    width or a grid step of it; the three that sample get what their worst run in 200
+    width or a grid step of it; the four that sample get what their worst run in 200
     seeds needed, with headroom, so a failure is a change in the solver rather than in
-    the draw.
+    the draw. `sgd` joined in 0.8.2, having been the one algorithm never run against
+    real data; its worst of 200 seeds gave up 5.3%.
     """
     scores, actual_classes = medium_dataset
     kwargs: dict[str, object] = {"algorithm_params": algorithm_params}

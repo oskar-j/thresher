@@ -9,6 +9,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-10-25
+
+One defect in the `sgd` walk, which could not find an optimum below the mean score.
+
+### Fixed
+
+- **`sgd` walks downhill as well as up** ([#51]). The step direction was recomputed every
+  iteration as `abs(gradient) * (1 - alpha)` and negated only after a step that made
+  things worse, so the walk headed *up* after every step that helped - whichever way that
+  step had gone. Towards an optimum above the mean, where every fixture in the suite put
+  it, that is the right walk. Towards one below it, each improving step down was followed
+  by a step back up, and the walk hovered just above where it started for its whole budget
+  and returned the mean. Any dataset whose cut sits below the mean score - the positive
+  class in the majority - got the mean back, at whatever accuracy the mean happened to
+  have. The sign is now kept and only the magnitude decays, so the two directions are the
+  same walk, mirrored.
+
+  Error rate on 8,000 perfectly separable rows, worst of 60 seeds at the default
+  `stoch_ratio`:
+
+  | boundary | before | now |
+  |---|---|---|
+  | 0.95 | 39.9% | 1.3% |
+  | 0.85 | 29.1% | 1.6% |
+  | 0.70 | 2.4% | 0.8% |
+  | 0.30 | **24.8%**, median 18.0% | 1.2% |
+  | 0.15 | **40.4%**, median 32.8% | 1.7% |
+  | 0.05 | **50.2%**, median 45.0% | 1.1% |
+
+  The three boundaries below the mean were failing on every seed, not in the tail. The
+  three above improve as well, because a walk that follows an improving step instead of
+  turning back after it spends fewer of its 200 steps retracing. One number moves the
+  other way: with the whole dataset read on every step (`stoch_ratio=1.0`) the old rule
+  crept up onto an uphill boundary and hit it exactly, where the new one straddles it and
+  lands within 0.4% - at the default ratio that is far inside the sampling noise.
+
+  On the 2,000-row, 5%-positive example the README uses for `stoch_ratio`, the default
+  ratio's worst case over 20 seeds falls from 0.30 to 0.035 and its mean from 0.04 to
+  0.008. Most of the tail that parameter was documented as the lever against was this
+  rule, not the sampling; the lever still works, and now moves the worst case from 0.035
+  to 0.005.
+
+### Changed
+
+- `sgd` joins the real-data test, `tests/test_optimization.py::test_medium_dataset`, with
+  a tolerance of eight points set from the worst of 200 seeds. It had been the one
+  algorithm never run against the fixture.
+- The README's algorithm scores are regenerated. The `gen` and `sgd` rows predated 0.7.3
+  and this release respectively: on the imbalanced set `gen` reads 99.3% rather than 88.6%
+  and `sgd` 98.3% rather than 88.4%. The paragraph that explained those two figures now
+  describes what is left - run-to-run noise - and the `stoch_ratio` figures are
+  re-measured, with the old ones kept beside them for the size of the difference.
+
+[#51]: https://github.com/oskar-j/thresher/issues/51
+
 ## [0.8.1] - 2026-10-25
 
 Eight assertions that could not fail, found by mutation testing in the 0.6.0 audit
@@ -1308,7 +1363,8 @@ same as in 0.2.3. This release is about the shape of the project.
 - Naive 2-dimensional stochastic gradient descent algorithm.
 - Evolutionary (genetic) algorithm.
 
-[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/oskar-j/thresher/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/oskar-j/thresher/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/oskar-j/thresher/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/oskar-j/thresher/compare/v0.7.3...v0.8.0
 [0.7.3]: https://github.com/oskar-j/thresher/compare/v0.7.2...v0.7.3
