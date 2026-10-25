@@ -13,6 +13,8 @@ import pytest
 
 import thresher
 from thresher import algorithm
+from thresher.algs.sgd.compute import sgd_solver
+from thresher.utils import pairwise
 
 Dataset = tuple[list[float], list[int]]
 DatasetFactory = Callable[..., Dataset]
@@ -80,8 +82,13 @@ def test_approximate_algorithms_stay_strictly_inside_the_range(
 
 @pytest.mark.parametrize("size", [2000, 5000])
 def test_sgd_converges_near_the_optimum(separable: DatasetFactory, size: int) -> None:
-    # Guards the step-size cap: without it the walk overshoots, pins against a bound and
-    # reports convergence there, landing far from the true threshold.
+    """The walk has to arrive, which is a property of its step schedule.
+
+    This used to say it guarded the step-size cap. It cannot: the first step is 5% of the
+    score range and the step only decays, so the cap at half the range never binds in a
+    default run, and deleting it changed nothing here (#38). `TestSgdStepCap` reaches the
+    cap on purpose.
+    """
     scores, actual_classes = separable(size, seed=size)
     reference = thresher.Thresher(algorithm="ls").optimize_threshold(scores, actual_classes)
     result = thresher.Thresher(algorithm="sgd").optimize_threshold(scores, actual_classes)
@@ -136,21 +143,25 @@ def test_get_current_algorithm() -> None:
     assert current["object"] == algorithm.available_algorithms["grid"]
 
 
-@pytest.mark.parametrize("stoch_ratio", [0.05, 0.5])
-def test_sgd_sample_ratio_is_configurable(skewed: DatasetFactory, stoch_ratio: float) -> None:
-    """`stoch_ratio` was the one knob sgd did not expose, added in 0.4.4.
+def test_a_larger_sgd_sample_makes_imbalanced_data_reliable(skewed: DatasetFactory) -> None:
+    """The documented effect of `stoch_ratio`, which is why 0.4.4 exposed it.
 
-    It is the documented lever against sgd's weak spot - when one class is rare, a small
-    subsample says little about where the boundary lies - so it has to actually reach the
-    sampling and not be silently ignored like an unknown key would be.
+    It is the lever against sgd's weak spot - when one class is rare, a small subsample
+    says little about where the boundary lies - and a single run cannot show it: at the
+    default ratio the median run on this data is already within 1% error, and it is the
+    tail that is bad. Over ten runs, the worst missed by more than 2% in 28 of 30 trials
+    at the default and never exceeded 1.4% at 0.5, so ten runs all under 3% is the lever
+    working rather than the draw. The test this replaces asserted that the result lay
+    inside the score range, which `sgd` clamps it to (#38); the next test is what proves
+    the option is wired through.
     """
     scores, actual_classes = skewed(2000, 0.95, seed=1)
+    solver = thresher.Thresher(algorithm="sgd", algorithm_params={"stoch_ratio": 0.5})
 
-    result = thresher.Thresher(
-        algorithm="sgd", algorithm_params={"stoch_ratio": stoch_ratio}
-    ).optimize_threshold(scores, actual_classes)
+    results = [solver.optimize_threshold(scores, actual_classes) for _ in range(10)]
+    worst = max(_error_rate(result, scores, actual_classes) for result in results)
 
-    assert min(scores) <= result <= max(scores)
+    assert worst < 0.03
 
 
 def test_a_larger_sgd_sample_reads_more_of_the_data(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -343,3 +354,53 @@ class TestSgdStepScalesWithTheData:
         )
 
         assert abs(result - starting_point) < abs(max(scores) - starting_point) / 2
+
+
+class TestSgdStepCap:
+    """No single step may exceed half the score range.
+
+    The cap is there so the walk cannot be flung from one bound to the other, and under
+    the defaults it is dead code: the first step is `step_ratio` times the range, 5% of
+    it, and the step only ever decays, so nothing reaches half. Deleting the cap passed
+    all 27 sgd tests that existed before these (#38). It binds only when `step_ratio` is
+    above 0.5, which is how these reach it.
+    """
+
+    def test_no_step_exceeds_half_the_range(self) -> None:
+        """On a deterministic V-shaped error curve, so nothing but the cap decides a move."""
+        visited: list[float] = []
+
+        def v_curve(point: float, previous: float) -> tuple[float, float]:
+            visited.append(point)
+            error = abs(point - 0.3)
+            return error, previous - error
+
+        sgd_solver(
+            v_curve,
+            starting_point=0.5,
+            gradient=10.0,
+            num_of_iters=50,
+            stop_thresh=0.0,
+            alpha=0.01,
+            lower_bound=0.0,
+            upper_bound=1.0,
+        )
+
+        moves = [abs(after - before) for before, after in pairwise(visited)]
+        assert len(moves) == 50, "a stop threshold of zero should let the walk run its full budget"
+        assert max(moves) <= 0.5, f"a step of {max(moves)} crossed more than half the range"
+
+    def test_an_oversized_step_still_converges(self, skewed: DatasetFactory) -> None:
+        """Through the public API: `step_ratio=10` asks for a first step ten times the data.
+
+        Without the cap the walk alternates between the two bounds for the whole run, and
+        the best point it ever visits is the mean it started from - about 35% error against
+        a boundary at 0.85. With it, the worst of 60 seeds was 4.7%.
+        """
+        scores, actual_classes = skewed(2000, 0.85, seed=85)
+
+        result = thresher.Thresher(algorithm="sgd", algorithm_params={"step_ratio": 10.0}).optimize_threshold(
+            scores, actual_classes
+        )
+
+        assert _error_rate(result, scores, actual_classes) < 0.10

@@ -10,39 +10,62 @@ from thresher import algorithm
 Dataset = tuple[list[float], list[int]]
 DatasetFactory = Callable[..., Dataset]
 
-# The medium fixture's optimum sits inside this band. The solvers are stochastic, so the
-# assertion is a range rather than an exact value.
-MEDIUM_LOWER, MEDIUM_UPPER = 0.40, 0.65
+
+def accuracy_of(threshold: float, scores: list[float], actual_classes: list[int]) -> float:
+    """Fraction of samples the threshold classifies correctly."""
+    return sum(
+        1
+        for score, actual in zip(scores, actual_classes, strict=True)
+        if (1 if score > threshold else -1) == actual
+    ) / len(scores)
 
 
 @pytest.mark.parametrize(
-    ("algorithm_name", "algorithm_params"),
+    ("algorithm_name", "algorithm_params", "tolerance"),
     [
-        pytest.param(None, {}, id="default"),
-        pytest.param("exact", {}, id="exact"),
-        pytest.param("hist", {}, id="hist"),
-        pytest.param("linear", {}, id="linear"),
-        pytest.param("sim", {}, id="genetic"),
-        pytest.param("grid", {}, id="grid"),
-        pytest.param("sgrid", {"no_of_decimal_places": 2, "stoch_ratio": 0.10}, id="sgrid"),
+        pytest.param(None, {}, 0.0, id="default"),
+        pytest.param("exact", {}, 0.0, id="exact"),
+        pytest.param("hist", {}, 0.005, id="hist"),
+        pytest.param("linear", {}, 0.0, id="linear"),
+        pytest.param("sim", {}, 0.05, id="genetic"),
+        pytest.param("grid", {}, 0.005, id="grid"),
+        pytest.param("sgrid", {"no_of_decimal_places": 2, "stoch_ratio": 0.10}, 0.05, id="sgrid"),
         pytest.param(
             "sgrid",
             {"no_of_decimal_places": 3, "stoch_ratio": 0.06, "reshuffle": True},
+            0.08,
             id="sgrid-reshuffle",
         ),
     ],
 )
 def test_medium_dataset(
-    medium_dataset: Dataset, algorithm_name: str | None, algorithm_params: dict[str, object]
+    medium_dataset: Dataset,
+    algorithm_name: str | None,
+    algorithm_params: dict[str, object],
+    tolerance: float,
 ) -> None:
+    """Each algorithm has to come within its tolerance of the best accuracy available.
+
+    The tolerance is accuracy given up against the exact optimum - what a caller loses
+    by choosing the algorithm - rather than distance along the threshold axis. Until
+    0.8.1 this asserted a band of `(0.40, 0.65)` around the optimum, and on this fixture
+    0.6499 classifies 77.4% against the optimum's 89.2%: an 11.7-point loss that passed
+    (#38). The exact solvers get no slack; the two deterministic approximations get a bin
+    width or a grid step of it; the three that sample get what their worst run in 200
+    seeds needed, with headroom, so a failure is a change in the solver rather than in
+    the draw.
+    """
     scores, actual_classes = medium_dataset
     kwargs: dict[str, object] = {"algorithm_params": algorithm_params}
     if algorithm_name is not None:
         kwargs["algorithm"] = algorithm_name
+    optimum = thresher.Thresher(algorithm="exact").optimize_threshold(scores, actual_classes)
+    best = accuracy_of(optimum, scores, actual_classes)
 
     result = thresher.Thresher(**kwargs).optimize_threshold(scores, actual_classes)
 
-    assert MEDIUM_LOWER <= result < MEDIUM_UPPER
+    lost = best - accuracy_of(result, scores, actual_classes)
+    assert 0 <= lost <= tolerance, f"gave up {lost:.4f} accuracy against the exact optimum"
 
 
 @pytest.mark.parametrize("alias", ["auto", "default", "default_heuristics"])
@@ -90,11 +113,22 @@ def test_custom_labels_are_normalized(tiny_dataset: Dataset) -> None:
 
 @pytest.mark.parametrize("n_jobs", [2, 3, -1])
 def test_linear_search_in_parallel(separable: DatasetFactory, n_jobs: int) -> None:
-    # n_jobs=-1 is documented in the README but used to make chunksize negative.
+    """`n_jobs` must leave the answer alone, and the answer has to be the right one.
+
+    `n_jobs=-1` is documented in the README and used to make the chunk size negative.
+    Asserting that the result lay inside the score range proved nothing: every candidate
+    the search scores lies inside it, so the worst of them would have passed (#38).
+    Separable data has exactly one perfect split, which pins the answer.
+    """
     scores, actual_classes = separable(200)
-    t = thresher.Thresher(algorithm="linear", algorithm_params={"n_jobs": n_jobs})
-    result = t.optimize_threshold(scores, actual_classes)
-    assert min(scores) <= result <= max(scores)
+    sequential = thresher.Thresher(algorithm="linear").optimize_threshold(scores, actual_classes)
+
+    result = thresher.Thresher(algorithm="linear", algorithm_params={"n_jobs": n_jobs}).optimize_threshold(
+        scores, actual_classes
+    )
+
+    assert result == sequential
+    assert accuracy_of(result, scores, actual_classes) == 1.0
 
 
 def test_supported_algorithms() -> None:

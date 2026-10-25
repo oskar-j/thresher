@@ -245,17 +245,6 @@ class TestEmptyAndDegenerateInput:
         with pytest.raises(ValueError, match="At least two scores"):
             linear_compute.run([0.5], [1], progress_bar=False)
 
-    def test_stochastic_grid_with_reshuffling(self) -> None:
-        # Draws a fresh subsample per candidate rather than reusing one.
-        scores = [0.1, 0.15, 0.2, 0.22, 0.4, 0.7, 0.8, 0.9]
-        actual_classes = [-1, -1, -1, -1, 1, 1, 1, 1]
-
-        result = thresher.Thresher(
-            algorithm="sgrid", algorithm_params={"reshuffle": True, "stoch_ratio": 0.5}
-        ).optimize_threshold(scores, actual_classes)
-
-        assert 0.0 <= result <= 1.0
-
 
 class TestDispatch:
     def test_set_algorithm_returns_the_instance_for_chaining(self) -> None:
@@ -443,3 +432,21 @@ class TestStochasticGridSampling:
             )
 
         assert len(draws) == 1
+
+    def test_reshuffling_everything_is_the_exhaustive_search(self) -> None:
+        """A fresh sample of all the data per candidate is every candidate against all of it.
+
+        `assert 0.0 <= result <= 1.0` stood for this until 0.8.1 and could not fail: the
+        grid is laid over the data, so every candidate satisfies it by construction, and a
+        `reshuffle` that silently reused one sample passed it (#38). The two tests above
+        prove the sampling happens; this one pins what it computes.
+        """
+        scores = [0.1, 0.15, 0.2, 0.22, 0.4, 0.7, 0.8, 0.9]
+        actual_classes = [-1, -1, -1, -1, 1, 1, 1, 1]
+
+        exhaustive = thresher.Thresher(algorithm="grid").optimize_threshold(scores, actual_classes)
+        reshuffled = thresher.Thresher(
+            algorithm="sgrid", algorithm_params={"reshuffle": True, "stoch_ratio": 1.0}
+        ).optimize_threshold(scores, actual_classes)
+
+        assert reshuffled == exhaustive

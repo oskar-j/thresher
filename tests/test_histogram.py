@@ -106,17 +106,29 @@ class TestAccuracy:
 
 
 class TestBoundedMemory:
-    """The reason this algorithm exists: its allocation does not follow the input."""
+    """The reason this algorithm exists: its allocation does not follow the input.
+
+    Measured through `Thresher`, not by calling the solver. Until 0.8.1 these called
+    `histogram.run` directly with lists, which proved that the solver allocates little
+    and nothing about what a caller pays: `optimize_threshold` copied both arguments on
+    the way in for four releases (#30) while these stayed green, because the copy sat
+    above the point they measured (#38). The round trip through the interface is what a
+    user pays for, so it is what is measured, and a copy reintroduced anywhere on that
+    path fails the first of these.
+    """
+
+    @staticmethod
+    def _peak_bytes(scores: list[float], actual_classes: list[int], **params: int) -> int:
+        solver = thresher.Thresher(algorithm="hist", algorithm_params=params)
+        tracemalloc.start()
+        solver.optimize_threshold(scores, actual_classes)
+        _, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+        return peak
 
     def test_allocation_barely_grows_with_the_data(self, overlapping: DatasetFactory) -> None:
-        peaks = {}
-        for size in (50_000, 500_000):
-            scores, actual_classes = overlapping(size)
-            tracemalloc.start()
-            histogram.run(scores, actual_classes, progress_bar=False, alg_options={})
-            _, peak = tracemalloc.get_traced_memory()
-            tracemalloc.stop()
-            peaks[size] = peak
+        # The data is built before each measurement starts; what is traced is the run.
+        peaks = {size: self._peak_bytes(*overlapping(size)) for size in (50_000, 500_000)}
 
         # Ten times the data must not cost anything like ten times the memory. The counters
         # are fixed; only their integer values grow.
@@ -126,13 +138,7 @@ class TestBoundedMemory:
     def test_resolution_sets_the_memory_not_the_input(self, overlapping: DatasetFactory) -> None:
         scores, actual_classes = overlapping(50_000)
 
-        peaks = {}
-        for bins in (64, 65_536):
-            tracemalloc.start()
-            histogram.run(scores, actual_classes, False, {"no_of_bins": bins})
-            _, peak = tracemalloc.get_traced_memory()
-            tracemalloc.stop()
-            peaks[bins] = peak
+        peaks = {bins: self._peak_bytes(scores, actual_classes, no_of_bins=bins) for bins in (64, 65_536)}
 
         assert peaks[65_536] > peaks[64], "more bins should cost more memory, not less"
 
